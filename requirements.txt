@@ -1,0 +1,4 @@
+sparqlwrapper
+elasticsearch
+shapely
+h3
