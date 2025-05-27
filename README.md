@@ -1,6 +1,10 @@
 # bioeco-graph
 
-## Setup
+## Portal architecture
+
+To do.
+
+## Prototyping
 ### Blazegraph, Elasticsearch, Kibana
 
 ```bash
@@ -25,7 +29,7 @@ docker logs -f kibana
 First convert the graph from `bioeco-export/bioeco_graph.jsonld` into Turtle.
 
 ```bash
-python convert_jsonld_ttl.py 
+python python bioeco_convert_ttl.py
 ```
 
 Then load into Blazegraph.

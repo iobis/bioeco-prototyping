@@ -8,6 +8,9 @@ from util import create_mapping, create_es_client
 import urllib3
 import logging
 from h3 import LatLngPoly
+from polygon_geohasher.polygon_geohasher import polygon_to_geohashes, geohashes_to_polygon
+import geohash
+
 
 project_index = "project"
 grid_index = "project_grid"
@@ -75,15 +78,17 @@ for i, result in enumerate(results["results"]["bindings"]):
         if buff.geom_type == "Polygon":
             buff = MultiPolygon([buff])
         for poly in buff.geoms:
-            outer_latlng = [(y, x) for x, y in poly.exterior.coords]
-            holes_latlng = [[(y, x) for x, y in interior.coords] for interior in poly.interiors]
-            latlng_poly = LatLngPoly(outer_latlng, *holes_latlng)
-            cells.extend(
-                h3.polygon_to_cells(
-                    latlng_poly,
-                    res=5
-                )
-            )
+            outer_geohashes_polygon = polygon_to_geohashes(poly, 4, False)
+            cells.extend(outer_geohashes_polygon)
+        #     outer_latlng = [(y, x) for x, y in poly.exterior.coords]
+        #     holes_latlng = [[(y, x) for x, y in interior.coords] for interior in poly.interiors]
+        #     latlng_poly = LatLngPoly(outer_latlng, *holes_latlng)
+        #     cells.extend(
+        #         h3.polygon_to_cells(
+        #             latlng_poly,
+        #             res=5
+        #         )
+        #     )
     try:
         response = client.index(index=project_index, document=project)
     except BadRequestError as e:
@@ -93,11 +98,10 @@ for i, result in enumerate(results["results"]["bindings"]):
         cells = list(set(cells))
         actions = []
         for cell in list(set(cells)):
-            # TODO: use rectangular instead of hex to match kibana aggregation?
-            ll = h3.cell_to_latlng(cell)
+            lat, lon = geohash.decode(cell)
             doc = {
                 "project": project["name"],
-                "geometry": tuple(reversed(ll))
+                "geometry": (lon, lat)
             }
             action = {
                 "_index": grid_index,

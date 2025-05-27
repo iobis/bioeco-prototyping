@@ -2,3 +2,5 @@ sparqlwrapper
 elasticsearch
 shapely
 h3
+polygon-geohasher
+geohash2

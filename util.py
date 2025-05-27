@@ -19,6 +19,6 @@ def create_mapping(client, index, mapping):
 def create_es_client():
     return Elasticsearch(
         "https://localhost:9200",
-        basic_auth=("elastic", "Jtt2+bKm*9OFlT6FeWqw"),
+        basic_auth=("elastic", "FYiriTb4zH=+r0EJ877A"),
         verify_certs=False
     )
