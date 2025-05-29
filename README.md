@@ -2,9 +2,10 @@
 
 ## Portal architecture
 
-To do.
+See [portal.md](portal.md).
 
 ## Prototyping
+
 ### Blazegraph, Elasticsearch, Kibana
 
 ```bash
