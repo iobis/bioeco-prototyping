@@ -12,6 +12,8 @@ from polygon_geohasher.polygon_geohasher import polygon_to_geohashes, geohashes_
 import geohash
 import time
 import uuid
+from datetime import datetime
+import argparse
 
 
 project_index = "project"
@@ -28,8 +30,39 @@ client = create_es_client()
 create_mapping(client, project_index, {
     "mappings": {
         "properties": {
-            "name": {"type": "keyword"},
             "id": {"type": "keyword"},
+            "uri": {"type": "keyword"},
+            "name": {
+                "type": "text",
+                "fields": {
+                    "keyword": {"type": "keyword"}
+                }
+            },
+            "description": {"type": "text"},
+            "temporal_coverage": {"type": "date"},
+            "start_date": {"type": "date"},
+            "end_date": {"type": "date"},
+            "start_year": {"type": "integer"},
+            "end_year": {"type": "integer"},
+            "url": {"type": "keyword"},
+            "keywords": {"type": "keyword"},
+            "eov_uris": {"type": "keyword"},
+            "eov_labels": {"type": "keyword"},
+            "eov_codes": {"type": "keyword"},
+            "readiness_data": {"type": "keyword"},
+            "readiness_requirements": {"type": "keyword"},
+            "readiness_coordination": {"type": "keyword"},
+            "maintenance_frequency": {"type": "keyword"},
+            "publishing_principles": {"type": "keyword"},
+            "funding_categories": {"type": "keyword"},
+            "funding_descriptions": {"type": "text"},
+            "additional_properties": {
+                "type": "nested",
+                "properties": {
+                    "name": {"type": "keyword"},
+                    "value": {"type": "keyword"}
+                }
+            },
             "geometry": {"type": "geo_shape"}
         }
     }
@@ -40,10 +73,23 @@ create_mapping(client, grid_index, {
         "properties": {
             "id": {"type": "keyword"},
             "project": {"type": "keyword"},
+            "eov_codes": {"type": "keyword"},
+            "start_year": {"type": "integer"},
+            "end_year": {"type": "integer"},
             "geometry": {"type": "geo_point"}
         }
     }
 })
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--limit",
+    type=int,
+    default=None,
+    help="Maximum number of projects to load into Elasticsearch",
+)
+args = parser.parse_args()
+limit = args.limit
 
 # sparql
 
@@ -53,16 +99,75 @@ query = """
     PREFIX schema: <http://schema.org/>
     PREFIX geosparql: <http://www.opengis.net/ont/geosparql#>
 
-    SELECT ?id ?name ?geometry
+    SELECT ?id ?name ?description ?geometry ?temporal_coverage ?url
+           (GROUP_CONCAT(DISTINCT ?keyword; SEPARATOR=",") AS ?keywords)
+           (GROUP_CONCAT(DISTINCT ?eovUri; SEPARATOR=",") AS ?eov_uris)
+           (GROUP_CONCAT(DISTINCT ?eovLabel; SEPARATOR=",") AS ?eov_labels)
+           ?readiness_data ?readiness_requirements ?readiness_coordination
+           ?maintenance_frequency ?publishing_principles
+           (GROUP_CONCAT(DISTINCT ?funding_cat; SEPARATOR=",") AS ?funding_categories)
+           (GROUP_CONCAT(DISTINCT ?funding_desc; SEPARATOR="||") AS ?funding_descriptions)
+           (GROUP_CONCAT(DISTINCT ?apPair; SEPARATOR="||") AS ?additional_properties)
     WHERE {
-    ?project a schema:ResearchProject ;
-            schema:name ?name .
-    OPTIONAL {
+      ?project a schema:ResearchProject ;
+               schema:name ?name .
+
+      OPTIONAL { ?project schema:description ?description . }
+      OPTIONAL { ?project schema:temporalCoverage ?temporal_coverage . }
+      OPTIONAL { ?project schema:url ?url . }
+      OPTIONAL { ?project schema:keywords ?keyword . }
+      OPTIONAL { ?project schema:publishingPrinciples ?publishing_principles . }
+
+      OPTIONAL {
+        ?project schema:variableMeasured ?vm .
+        ?vm schema:propertyID ?eovUri .
+        OPTIONAL { ?vm schema:name ?eovLabel . }
+      }
+
+      OPTIONAL {
+        ?project schema:additionalProperty ?ap1 .
+        ?ap1 schema:name "readinessData" .
+        ?ap1 schema:value ?readiness_data .
+      }
+      OPTIONAL {
+        ?project schema:additionalProperty ?ap2 .
+        ?ap2 schema:name "readinessRequirements" .
+        ?ap2 schema:value ?readiness_requirements .
+      }
+      OPTIONAL {
+        ?project schema:additionalProperty ?ap3 .
+        ?ap3 schema:name "readinessCoordination" .
+        ?ap3 schema:value ?readiness_coordination .
+      }
+      OPTIONAL {
+        ?project schema:additionalProperty ?ap4 .
+        ?ap4 schema:name "maintenanceFrequency" .
+        ?ap4 schema:value ?maintenance_frequency .
+      }
+
+      OPTIONAL {
+        ?project schema:funding ?funding .
+        OPTIONAL { ?funding schema:category ?funding_cat . }
+        OPTIONAL { ?funding schema:description ?funding_desc . }
+      }
+
+      OPTIONAL {
+        ?project schema:additionalProperty ?ap .
+        ?ap schema:name ?apName .
+        ?ap schema:value ?apValue .
+        BIND(CONCAT(?apName, ":", ?apValue) AS ?apPair)
+      }
+
+      OPTIONAL {
         ?project geosparql:hasGeometry ?g .
         ?g geosparql:asWKT ?geometry .
+      }
+
+      BIND(STR(?project) AS ?id)
     }
-    BIND(STR(?project) AS ?id)
-    }
+    GROUP BY ?id ?name ?description ?geometry ?temporal_coverage ?url
+             ?readiness_data ?readiness_requirements ?readiness_coordination
+             ?maintenance_frequency ?publishing_principles
 """
 
 sparql.setQuery(query)
@@ -70,8 +175,98 @@ sparql.setReturnFormat(JSON)
 results = sparql.query().convert()
 
 for i, result in enumerate(results["results"]["bindings"]):
+    if limit is not None and i >= limit:
+        break
     project = {k: v["value"] for k, v in result.items()}
-    project["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, project["id"]))
+
+    # Stable UUID based on the project URI
+    original_uri = project["id"]
+    project["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, original_uri))
+    project["uri"] = original_uri
+
+    # Temporal coverage and derived year fields
+    temporal = project.get("temporal_coverage")
+    if temporal:
+        try:
+            dt = datetime.fromisoformat(temporal.replace("Z", ""))
+            project["start_date"] = dt.date().isoformat()
+            project["end_date"] = None
+            project["start_year"] = dt.year
+            project["end_year"] = dt.year
+        except ValueError:
+            logging.warning(f"Could not parse temporal_coverage '{temporal}' for project {project['name']}")
+
+    # Keywords as a list
+    if "keywords" in project:
+        keywords = [kw.strip() for kw in project["keywords"].split(",") if kw.strip()]
+        project["keywords"] = list(dict.fromkeys(keywords))
+
+    # EOV URIs and labels
+    eov_uris_value = project.get("eov_uris")
+    if eov_uris_value:
+        raw_uris = [u for u in eov_uris_value.split(",") if u]
+        seen = set()
+        eov_uris = []
+        for u in raw_uris:
+            if u not in seen:
+                seen.add(u)
+                eov_uris.append(u)
+        project["eov_uris"] = eov_uris
+
+        eov_codes = []
+        for uri in eov_uris:
+            if "/eov/" in uri:
+                code = uri.split("/eov/", 1)[1]
+            else:
+                code = uri.rsplit("/", 1)[-1]
+            eov_codes.append(code)
+        project["eov_codes"] = eov_codes
+
+    eov_labels_value = project.get("eov_labels")
+    if eov_labels_value:
+        labels = [l for l in eov_labels_value.split(",") if l]
+        project["eov_labels"] = list(dict.fromkeys(labels))
+
+    # Funding categories and descriptions
+    if "funding_categories" in project:
+        funding_categories_value = project["funding_categories"]
+        if funding_categories_value:
+            cats = [c for c in funding_categories_value.split(",") if c]
+            project["funding_categories"] = list(dict.fromkeys(cats))
+        else:
+            # Remove empty string value to avoid mapping conflicts
+            del project["funding_categories"]
+
+    if "funding_descriptions" in project:
+        funding_descriptions_value = project["funding_descriptions"]
+        if funding_descriptions_value:
+            descs = [d for d in funding_descriptions_value.split("||") if d]
+            project["funding_descriptions"] = descs
+        else:
+            del project["funding_descriptions"]
+
+    # All additionalProperty name/value pairs
+    if "additional_properties" in project:
+        additional_props_value = project["additional_properties"]
+        if additional_props_value:
+            pairs = [p for p in additional_props_value.split("||") if p]
+            additional_properties = []
+            for pair in pairs:
+                if ":" in pair:
+                    name, value = pair.split(":", 1)
+                else:
+                    name, value = pair, ""
+                additional_properties.append(
+                    {
+                        "name": name,
+                        "value": value,
+                    }
+                )
+            project["additional_properties"] = additional_properties
+        else:
+            # Don't send an empty string for a nested field
+            del project["additional_properties"]
+
     logging.info(f"Loading project {project['name']} ({i + 1}/{len(results['results']['bindings'])})")
 
     cells = []
@@ -107,6 +302,9 @@ for i, result in enumerate(results["results"]["bindings"]):
             doc = {
                 "id": project["id"],
                 "project": project["name"],
+                "eov_codes": project.get("eov_codes", []),
+                "start_year": project.get("start_year"),
+                "end_year": project.get("end_year"),
                 "geometry": (lon, lat)
             }
             action = {
