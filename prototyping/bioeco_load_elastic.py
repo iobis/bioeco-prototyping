@@ -46,9 +46,17 @@ create_mapping(client, project_index, {
             "end_year": {"type": "integer"},
             "url": {"type": "keyword"},
             "keywords": {"type": "keyword"},
-            "eov_uris": {"type": "keyword"},
-            "eov_labels": {"type": "keyword"},
-            "eov_codes": {"type": "keyword"},
+            "eovs": {
+                "type": "nested",
+                "properties": {
+                    "uri": {"type": "keyword"},
+                    "label": {
+                        "type": "text",
+                        "fields": {"keyword": {"type": "keyword"}}
+                    },
+                    "code": {"type": "keyword"}
+                }
+            },
             "readiness_data": {"type": "keyword"},
             "readiness_requirements": {"type": "keyword"},
             "readiness_coordination": {"type": "keyword"},
@@ -101,8 +109,6 @@ query = """
 
     SELECT ?id ?name ?description ?geometry ?temporal_coverage ?url
            (GROUP_CONCAT(DISTINCT ?keyword; SEPARATOR=",") AS ?keywords)
-           (GROUP_CONCAT(DISTINCT ?eovUri; SEPARATOR=",") AS ?eov_uris)
-           (GROUP_CONCAT(DISTINCT ?eovLabel; SEPARATOR=",") AS ?eov_labels)
            ?readiness_data ?readiness_requirements ?readiness_coordination
            ?maintenance_frequency ?publishing_principles
            (GROUP_CONCAT(DISTINCT ?funding_cat; SEPARATOR=",") AS ?funding_categories)
@@ -117,12 +123,6 @@ query = """
       OPTIONAL { ?project schema:url ?url . }
       OPTIONAL { ?project schema:keywords ?keyword . }
       OPTIONAL { ?project schema:publishingPrinciples ?publishing_principles . }
-
-      OPTIONAL {
-        ?project schema:variableMeasured ?vm .
-        ?vm schema:propertyID ?eovUri .
-        OPTIONAL { ?vm schema:name ?eovLabel . }
-      }
 
       OPTIONAL {
         ?project schema:additionalProperty ?ap1 .
@@ -174,6 +174,35 @@ sparql.setQuery(query)
 sparql.setReturnFormat(JSON)
 results = sparql.query().convert()
 
+# EOVs as (uri, label) per project - one row per variableMeasured
+query_eovs = """
+    PREFIX schema: <http://schema.org/>
+    SELECT ?id ?eovUri ?eovLabel
+    WHERE {
+      ?project a schema:ResearchProject .
+      ?project schema:variableMeasured ?vm .
+      ?vm schema:propertyID ?eovUri .
+      OPTIONAL { ?vm schema:name ?eovLabel . }
+      BIND(STR(?project) AS ?id)
+    }
+"""
+sparql.setQuery(query_eovs)
+eov_results = sparql.query().convert()
+eov_by_id = {}
+for row in eov_results["results"]["bindings"]:
+    project_id = row["id"]["value"]
+    uri = row["eovUri"]["value"]
+    label = row.get("eovLabel", {}).get("value", "")
+    if "/eov/" in uri:
+        code = uri.split("/eov/", 1)[1]
+    else:
+        code = uri.rsplit("/", 1)[-1]
+    if project_id not in eov_by_id:
+        eov_by_id[project_id] = []
+    # dedupe by uri
+    if not any(e["uri"] == uri for e in eov_by_id[project_id]):
+        eov_by_id[project_id].append({"uri": uri, "label": label, "code": code})
+
 for i, result in enumerate(results["results"]["bindings"]):
     if limit is not None and i >= limit:
         break
@@ -201,31 +230,8 @@ for i, result in enumerate(results["results"]["bindings"]):
         keywords = [kw.strip() for kw in project["keywords"].split(",") if kw.strip()]
         project["keywords"] = list(dict.fromkeys(keywords))
 
-    # EOV URIs and labels
-    eov_uris_value = project.get("eov_uris")
-    if eov_uris_value:
-        raw_uris = [u for u in eov_uris_value.split(",") if u]
-        seen = set()
-        eov_uris = []
-        for u in raw_uris:
-            if u not in seen:
-                seen.add(u)
-                eov_uris.append(u)
-        project["eov_uris"] = eov_uris
-
-        eov_codes = []
-        for uri in eov_uris:
-            if "/eov/" in uri:
-                code = uri.split("/eov/", 1)[1]
-            else:
-                code = uri.rsplit("/", 1)[-1]
-            eov_codes.append(code)
-        project["eov_codes"] = eov_codes
-
-    eov_labels_value = project.get("eov_labels")
-    if eov_labels_value:
-        labels = [l for l in eov_labels_value.split(",") if l]
-        project["eov_labels"] = list(dict.fromkeys(labels))
+    # EOVs as combined list of {uri, label, code}
+    project["eovs"] = eov_by_id.get(original_uri, [])
 
     # Funding categories and descriptions
     if "funding_categories" in project:
@@ -302,7 +308,7 @@ for i, result in enumerate(results["results"]["bindings"]):
             doc = {
                 "id": project["id"],
                 "project": project["name"],
-                "eov_codes": project.get("eov_codes", []),
+                "eov_codes": [e["code"] for e in project.get("eovs", [])],
                 "start_year": project.get("start_year"),
                 "end_year": project.get("end_year"),
                 "geometry": (lon, lat)
