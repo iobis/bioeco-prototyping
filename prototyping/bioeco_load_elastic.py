@@ -10,6 +10,8 @@ import logging
 from h3 import LatLngPoly
 from polygon_geohasher.polygon_geohasher import polygon_to_geohashes, geohashes_to_polygon
 import geohash
+import time
+import uuid
 
 
 project_index = "project"
@@ -17,6 +19,7 @@ grid_index = "project_grid"
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("elastic_transport.transport").setLevel(logging.WARNING)
+
 
 # elastic
 
@@ -35,6 +38,7 @@ create_mapping(client, project_index, {
 create_mapping(client, grid_index, {
     "mappings": {
         "properties": {
+            "id": {"type": "keyword"},
             "project": {"type": "keyword"},
             "geometry": {"type": "geo_point"}
         }
@@ -67,6 +71,7 @@ results = sparql.query().convert()
 
 for i, result in enumerate(results["results"]["bindings"]):
     project = {k: v["value"] for k, v in result.items()}
+    project["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, project["id"]))
     logging.info(f"Loading project {project['name']} ({i + 1}/{len(results['results']['bindings'])})")
 
     cells = []
@@ -90,7 +95,7 @@ for i, result in enumerate(results["results"]["bindings"]):
         #         )
         #     )
     try:
-        response = client.index(index=project_index, document=project)
+        response = client.index(index=project_index, id=project["id"], document=project)
     except BadRequestError as e:
         logging.error(e)
 
@@ -100,6 +105,7 @@ for i, result in enumerate(results["results"]["bindings"]):
         for cell in list(set(cells)):
             lat, lon = geohash.decode(cell)
             doc = {
+                "id": project["id"],
                 "project": project["name"],
                 "geometry": (lon, lat)
             }
