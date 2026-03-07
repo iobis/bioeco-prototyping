@@ -177,6 +177,36 @@
   line-height: 1.45;
 }
 
+.project-eov-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.project-eov-bubble {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.project-eov-bubble-more {
+  width: auto;
+  height: auto;
+  min-width: 18px;
+  min-height: 18px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--muted);
+  background: var(--border) !important;
+  border-radius: 50%;
+}
+
 /* Map legend – card style */
 .map-legend {
   position: absolute;
