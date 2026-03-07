@@ -60,6 +60,13 @@ def get_projects_tile(
         "grid_precision": 5,
         "grid_type": "grid",
         "size": 0,
+        "aggs": {
+            "unique_projects": {
+                "cardinality": {
+                    "field": "id"  # Ensure this is the correct field name for project IDs
+                }
+            }
+        }
     }
     try:
         resp = es.search_mvt(
