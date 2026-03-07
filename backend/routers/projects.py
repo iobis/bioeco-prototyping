@@ -2,6 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import NotFoundError
 
 from config import PROJECT_INDEX
 from es_client import get_es_client
@@ -106,6 +107,8 @@ def list_projects(
     }
     try:
         resp = es.search(index=PROJECT_INDEX, body=body)
+    except NotFoundError:
+        return {"total": 0, "items": []}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
     total = resp["hits"]["total"]["value"]
@@ -121,8 +124,8 @@ def get_project(
     """Fetch a single project by ID (UUID)."""
     try:
         resp = es.get(index=PROJECT_INDEX, id=project_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
     except Exception as e:
-        if "404" in str(e) or "not_found" in str(e).lower():
-            raise HTTPException(status_code=404, detail="Project not found")
         raise HTTPException(status_code=502, detail=str(e))
     return resp["_source"]

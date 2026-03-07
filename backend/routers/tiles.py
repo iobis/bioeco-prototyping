@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import NotFoundError
 
 from config import GRID_INDEX
 from es_client import get_es_client
@@ -55,10 +56,10 @@ def get_projects_tile(
 
     body = {
         "query": _build_mvt_query(eov, name, start_year, end_year),
-        "fields": ["id", "project", "eov_codes", "start_year", "end_year"],
         "grid_agg": "geotile",
-        "grid_precision": 2,
-        "size": 10000,
+        "grid_precision": 5,
+        "grid_type": "grid",
+        "size": 0,
     }
     try:
         resp = es.search_mvt(
@@ -69,6 +70,8 @@ def get_projects_tile(
             y=y,
             body=body,
         )
+    except NotFoundError:
+        return Response(content=b"", media_type="application/vnd.mapbox-vector-tile")
     except Exception:
         return Response(
             content=b"", media_type="application/vnd.mapbox-vector-tile", status_code=502
