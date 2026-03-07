@@ -14,9 +14,10 @@ interface ProjectsResponse {
 
 interface ProjectListProps {
   onHoverProject?: (projectId: string | null) => void
+  onSelectProject?: (projectId: string) => void
 }
 
-export function ProjectList({ onHoverProject }: ProjectListProps) {
+export function ProjectList({ onHoverProject, onSelectProject }: ProjectListProps) {
   const [data, setData] = useState<ProjectsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,12 +46,16 @@ export function ProjectList({ onHoverProject }: ProjectListProps) {
           onMouseEnter={() => onHoverProject?.(p.id)}
           onMouseLeave={() => onHoverProject?.(null)}
         >
-          <a href={`/api/projects/${p.id}`} target="_blank" rel="noopener noreferrer" className="project-link">
-            {p.name}
-          </a>
-          {p.description && (
-            <p className="project-desc">{p.description.slice(0, 120)}{p.description.length > 120 ? '…' : ''}</p>
-          )}
+          <button
+            type="button"
+            className="project-card-button"
+            onClick={() => onSelectProject?.(p.id)}
+          >
+            <span className="project-link">{p.name}</span>
+            {p.description && (
+              <p className="project-desc">{p.description.slice(0, 120)}{p.description.length > 120 ? '…' : ''}</p>
+            )}
+          </button>
         </li>
       ))}
     </ul>
