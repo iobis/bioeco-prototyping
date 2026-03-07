@@ -9,10 +9,11 @@
   top: 0;
   left: 0;
   bottom: 0;
-  width: 360px;
+  width: 320px;
   max-width: 90vw;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
   z-index: 10;
@@ -27,45 +28,65 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .panel-header h1 {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
 }
 
 .toggle-list {
-  background: none;
-  border: none;
-  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 6px 10px;
   cursor: pointer;
-  font-size: 1rem;
-  color: #333;
-  border-radius: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  border-radius: 6px;
+  transition: border-color 0.15s, color 0.15s;
 }
 
 .toggle-list:hover {
-  background: #eee;
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .panel-content {
   flex: 1;
   overflow: auto;
-  padding: 8px;
+  padding: 10px 14px;
+}
+
+.panel-content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.panel-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
 }
 
 .list-message {
   padding: 16px;
   margin: 0;
-  color: #666;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .list-error {
-  color: #c62828;
+  color: #b91c1c;
 }
 
 .project-list {
@@ -75,18 +96,24 @@
 }
 
 .project-item {
-  padding: 10px 0;
-  border-bottom: 1px solid #eee;
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin-bottom: 2px;
+  border: 1px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
 }
 
-.project-item:last-child {
-  border-bottom: none;
+.project-item:hover {
+  background: var(--bg);
+  border-color: var(--border);
 }
 
 .project-link {
-  font-weight: 500;
-  color: #1565c0;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent);
   text-decoration: none;
+  line-height: 1.3;
 }
 
 .project-link:hover {
@@ -95,51 +122,83 @@
 
 .project-desc {
   margin: 4px 0 0;
-  font-size: 0.875rem;
-  color: #555;
-  line-height: 1.4;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
+/* Map legend – card style */
 .map-legend {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
+  bottom: 16px;
+  left: 16px;
   z-index: 10;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 8px 12px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  background: var(--surface);
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  font-size: 11px;
 }
 
 .map-legend-title {
   display: block;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: #333;
+  margin-bottom: 8px;
+  font-family: "Space Mono", monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .map-legend-scale {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .map-legend-bar {
   display: flex;
   height: 10px;
-  border-radius: 2px;
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .map-legend-bar span {
   flex: 1;
-  min-width: 20px;
+  min-width: 18px;
 }
 
 .map-legend-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 0.65rem;
-  color: #555;
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* Map controls – light theme */
+.map-wrap .map-container {
+  background: var(--bg);
+}
+
+.map-wrap .maplibregl-ctrl-group {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+.map-wrap .maplibregl-ctrl-group button {
+  background: transparent !important;
+  color: var(--text) !important;
+}
+
+.map-wrap .maplibregl-ctrl-group button:hover {
+  background: var(--bg) !important;
+}
+
+.map-wrap .maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--border) !important;
 }

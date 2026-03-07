@@ -18,7 +18,7 @@ export function Map() {
           type: 'vector',
           tiles: [tileUrl],
           minzoom: 0,
-          maxzoom: 3,
+          maxzoom: 4,
         },
         land_polygons: {
           type: 'vector',
@@ -34,30 +34,30 @@ export function Map() {
         },
       },
       layers: [
-        // {
-        //   id: 'background',
-        //   type: 'background',
-        //   paint: { 'background-color': '#dbdbdc' },
-        // },
-        // {
-        //   id: 'land_polygons',
-        //   type: 'fill',
-        //   source: 'land_polygons',
-        //   'source-layer': 'land',
-        //   paint: {
-        //     'fill-color': '#fcfcfd',
-        //     'fill-opacity': 1,
-        //   },
-        // },
+        {
+          id: 'background',
+          type: 'background',
+          paint: { 'background-color': '#e8ecf0' },
+        },
+        {
+          id: 'land_polygons',
+          type: 'fill',
+          source: 'land_polygons',
+          'source-layer': 'land',
+          paint: {
+            'fill-color': '#f8fafc',
+            'fill-opacity': 1,
+          },
+        },
         {
           id: 'coastlines',
           type: 'line',
           source: 'coastlines',
           'source-layer': 'coastlines',
           paint: {
-            'line-color': '#000000',
-            'line-width': 0.5,
-            'line-opacity': 1,
+            'line-color': '#334155',
+            'line-width': 0.4,
+            'line-opacity': 0.85,
           },
         },
         {
@@ -101,7 +101,9 @@ export function Map() {
             'text-ignore-placement': true,
           },
           paint: {
-            'text-color': '#1a1a1a'
+            'text-color': '#0f172a',
+            // 'text-halo-color': 'rgba(255,255,255,0.9)',
+            // 'text-halo-width': 1.5,
           },
         },
       ],
@@ -124,9 +126,6 @@ export function Map() {
   return (
     <div className="map-wrap" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} className="map-container" style={{ width: '100%', height: '100%' }} />
-      <div style={{ position: 'absolute', top: 8, left: 8, fontSize: 10, color: '#666', zIndex: 1 }} title="Purple scale, 0.4 opacity — if you see blue, you're on a cached build">
-        Grid opacity: 0.4
-      </div>
       <div className="map-legend">
         <span className="map-legend-title">Projects per cell</span>
         <div className="map-legend-scale">
