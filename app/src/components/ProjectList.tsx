@@ -12,7 +12,11 @@ interface ProjectsResponse {
   items: Project[]
 }
 
-export function ProjectList() {
+interface ProjectListProps {
+  onHoverProject?: (projectId: string | null) => void
+}
+
+export function ProjectList({ onHoverProject }: ProjectListProps) {
   const [data, setData] = useState<ProjectsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -35,9 +39,14 @@ export function ProjectList() {
   return (
     <ul className="project-list">
       {data.items.map((p) => (
-        <li key={p.id} className="project-item">
+        <li
+          key={p.id}
+          className="project-item"
+          onMouseEnter={() => onHoverProject?.(p.id)}
+          onMouseLeave={() => onHoverProject?.(null)}
+        >
           <a href={`/api/projects/${p.id}`} target="_blank" rel="noopener noreferrer" className="project-link">
-            {p.name} X
+            {p.name}
           </a>
           {p.description && (
             <p className="project-desc">{p.description.slice(0, 120)}{p.description.length > 120 ? '…' : ''}</p>

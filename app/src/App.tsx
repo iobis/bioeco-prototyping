@@ -5,10 +5,11 @@ import './App.css'
 
 export default function App() {
   const [listOpen, setListOpen] = useState(true)
+  const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null)
 
   return (
     <div className="app">
-      <Map />
+      <Map hoveredProjectId={hoveredProjectId} />
       <aside className={`panel ${listOpen ? 'open' : ''}`}>
         <header className="panel-header">
           <h1>GOOS BioEco Portal</h1>
@@ -23,7 +24,7 @@ export default function App() {
         </header>
         {listOpen && (
           <div className="panel-content">
-            <ProjectList />
+            <ProjectList onHoverProject={setHoveredProjectId} />
           </div>
         )}
       </aside>

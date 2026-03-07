@@ -1,8 +1,18 @@
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import { useEffect, useRef } from 'react'
 
-export function Map() {
+const HIGHLIGHT_SOURCE_ID = 'project-highlight'
+const HIGHLIGHT_LAYER_ID = 'project-highlight-layer'
+
+interface MapProps {
+  hoveredProjectId?: string | null
+}
+
+export function Map({ hoveredProjectId = null }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<maplibregl.Map | null>(null)
+  const hoveredIdRef = useRef<string | null>(null)
+  hoveredIdRef.current = hoveredProjectId ?? null
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -108,11 +118,64 @@ export function Map() {
     })
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right')
+    mapRef.current = map
 
     return () => {
       map.remove()
+      mapRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.getStyle()) return
+
+    const removeHighlight = () => {
+      if (map.getLayer(HIGHLIGHT_LAYER_ID)) map.removeLayer(HIGHLIGHT_LAYER_ID)
+      if (map.getSource(HIGHLIGHT_SOURCE_ID)) map.removeSource(HIGHLIGHT_SOURCE_ID)
+    }
+
+    if (!hoveredProjectId) {
+      removeHighlight()
+      return
+    }
+
+    const idForFetch = hoveredProjectId
+    fetch(`/api/projects/${hoveredProjectId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((project) => {
+        if (!mapRef.current || !project?.geometry || hoveredIdRef.current !== idForFetch) {
+          removeHighlight()
+          return
+        }
+        removeHighlight()
+        const geoJson: GeoJSON.Feature = {
+          type: 'Feature',
+          geometry: project.geometry,
+          properties: {},
+        }
+        map.addSource(HIGHLIGHT_SOURCE_ID, {
+          type: 'geojson',
+          data: geoJson,
+        })
+        map.addLayer(
+          {
+            id: HIGHLIGHT_LAYER_ID,
+            type: 'fill',
+            source: HIGHLIGHT_SOURCE_ID,
+            paint: {
+              'fill-color': '#0284c7',
+              'fill-opacity': 0.35,
+              'fill-outline-color': '#0369a1',
+            },
+          },
+          'project-grid-labels'
+        )
+      })
+      .catch(() => removeHighlight())
+
+    return removeHighlight
+  }, [hoveredProjectId])
 
   return (
     <div className="map-wrap" style={{ width: '100%', height: '100%', position: 'relative' }}>
