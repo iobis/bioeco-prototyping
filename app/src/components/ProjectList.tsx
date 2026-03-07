@@ -15,11 +15,13 @@ interface ProjectsResponse {
 interface ProjectListProps {
   onHoverProject?: (projectId: string | null) => void
   onSelectProject?: (projectId: string) => void
+  cellBbox?: string | null
+  onClearCellFilter?: () => void
 }
 
 const SEARCH_DEBOUNCE_MS = 300
 
-export function ProjectList({ onHoverProject, onSelectProject }: ProjectListProps) {
+export function ProjectList({ onHoverProject, onSelectProject, cellBbox = null, onClearCellFilter }: ProjectListProps) {
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [data, setData] = useState<ProjectsResponse | null>(null)
@@ -35,6 +37,7 @@ export function ProjectList({ onHoverProject, onSelectProject }: ProjectListProp
     setLoading(true)
     const params = new URLSearchParams({ size: '100' })
     if (debouncedQuery) params.set('name', debouncedQuery)
+    if (cellBbox?.trim()) params.set('bbox', cellBbox.trim())
     fetch(`/api/projects?${params}`)
       .then((r) => {
         if (!r.ok) throw new Error(r.statusText)
@@ -43,10 +46,18 @@ export function ProjectList({ onHoverProject, onSelectProject }: ProjectListProp
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [debouncedQuery])
+  }, [debouncedQuery, cellBbox])
 
   return (
     <>
+      {cellBbox && onClearCellFilter && (
+        <div className="panel-cell-filter">
+          <span className="panel-cell-filter-label">Map cell filter active</span>
+          <button type="button" className="panel-cell-filter-clear" onClick={onClearCellFilter}>
+            Clear
+          </button>
+        </div>
+      )}
       <div className="panel-search">
         <input
           type="search"

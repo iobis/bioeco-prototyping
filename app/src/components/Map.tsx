@@ -3,16 +3,55 @@ import { useEffect, useRef } from 'react'
 
 const HIGHLIGHT_SOURCE_ID = 'project-highlight'
 const HIGHLIGHT_LAYER_ID = 'project-highlight-layer'
+const CELL_HIGHLIGHT_SOURCE_ID = 'cell-highlight'
+const CELL_HIGHLIGHT_LAYER_ID = 'cell-highlight-layer'
+const CELL_HOVER_SOURCE_ID = 'cell-hover'
+const CELL_HOVER_LAYER_ID = 'cell-hover-layer'
+const PROJECT_GRID_LAYER_ID = 'project-grid'
+
+const EMPTY_GEOJSON: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+/** Get bbox [minLon, minLat, maxLon, maxLat] from a grid cell feature's geometry */
+function bboxFromFeatureGeometry(geometry: GeoJSON.Geometry): [number, number, number, number] | null {
+  let coords: number[][]
+  if (geometry.type === 'Polygon') {
+    coords = geometry.coordinates[0]
+  } else if (geometry.type === 'MultiPolygon') {
+    coords = geometry.coordinates.flat()[0]
+  } else {
+    return null
+  }
+  let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity
+  for (const c of coords) {
+    minLon = Math.min(minLon, c[0])
+    maxLon = Math.max(maxLon, c[0])
+    minLat = Math.min(minLat, c[1])
+    maxLat = Math.max(maxLat, c[1])
+  }
+  return [minLon, minLat, maxLon, maxLat]
+}
+
+export function bboxToString(bbox: [number, number, number, number]): string {
+  return bbox.join(',')
+}
 
 interface MapProps {
   hoveredProjectId?: string | null
+  selectedCellBbox?: string | null
+  onCellClick?: (bbox: string | null) => void
 }
 
-export function Map({ hoveredProjectId = null }: MapProps) {
+export function Map({
+  hoveredProjectId = null,
+  selectedCellBbox = null,
+  onCellClick,
+}: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const hoveredIdRef = useRef<string | null>(null)
+  const selectedCellBboxRef = useRef<string | null>(null)
   hoveredIdRef.current = hoveredProjectId ?? null
+  selectedCellBboxRef.current = selectedCellBbox ?? null
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -118,6 +157,74 @@ export function Map({ hoveredProjectId = null }: MapProps) {
     })
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right')
+
+    const setupGridInteractions = () => {
+      if (!map.getSource(CELL_HOVER_SOURCE_ID)) {
+        map.addSource(CELL_HOVER_SOURCE_ID, {
+          type: 'geojson',
+          data: EMPTY_GEOJSON,
+        })
+        map.addLayer(
+          {
+            id: CELL_HOVER_LAYER_ID,
+            type: 'fill',
+            source: CELL_HOVER_SOURCE_ID,
+            paint: {
+              'fill-color': '#fde047',
+              'fill-opacity': 0.2,
+              'fill-outline-color': '#ca8a04',
+            },
+          },
+          'project-grid-labels'
+        )
+      }
+
+      const hoverSource = map.getSource(CELL_HOVER_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+
+      const updateHover = (point: maplibregl.Point) => {
+        const features = map.queryRenderedFeatures(point, { layers: [PROJECT_GRID_LAYER_ID] })
+        if (hoverSource) {
+          if (features.length && features[0].geometry) {
+            hoverSource.setData({
+              type: 'Feature',
+              geometry: features[0].geometry as GeoJSON.Polygon,
+              properties: {},
+            })
+          } else {
+            hoverSource.setData(EMPTY_GEOJSON)
+          }
+        }
+      }
+
+      map.on('mousemove', (e) => {
+        updateHover(e.point)
+      })
+      map.getCanvas().addEventListener('mouseleave', () => {
+        if (hoverSource) hoverSource.setData(EMPTY_GEOJSON)
+      })
+
+      if (onCellClick) {
+        map.on('click', (e) => {
+          const features = map.queryRenderedFeatures(e.point, { layers: [PROJECT_GRID_LAYER_ID] })
+          if (features.length && features[0].geometry) {
+            const bbox = bboxFromFeatureGeometry(features[0].geometry as GeoJSON.Geometry)
+            if (bbox) {
+              const bboxStr = bboxToString(bbox)
+              const current = selectedCellBboxRef.current
+              onCellClick(current === bboxStr ? null : bboxStr)
+            }
+          }
+        })
+        map.getCanvas().style.cursor = 'pointer'
+      }
+    }
+
+    if (map.isStyleLoaded()) {
+      setupGridInteractions()
+    } else {
+      map.once('load', setupGridInteractions)
+    }
+
     mapRef.current = map
 
     return () => {
@@ -176,6 +283,64 @@ export function Map({ hoveredProjectId = null }: MapProps) {
 
     return removeHighlight
   }, [hoveredProjectId])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.getStyle()) return
+
+    const removeCellHighlight = () => {
+      if (map.getLayer(CELL_HIGHLIGHT_LAYER_ID)) map.removeLayer(CELL_HIGHLIGHT_LAYER_ID)
+      if (map.getSource(CELL_HIGHLIGHT_SOURCE_ID)) map.removeSource(CELL_HIGHLIGHT_SOURCE_ID)
+    }
+
+    if (!selectedCellBbox || !selectedCellBbox.trim()) {
+      removeCellHighlight()
+      return
+    }
+
+    const parts = selectedCellBbox.split(',').map((p) => parseFloat(p.trim()))
+    if (parts.length !== 4 || parts.some(Number.isNaN)) {
+      removeCellHighlight()
+      return
+    }
+    const [minLon, minLat, maxLon, maxLat] = parts as [number, number, number, number]
+    const polygon: GeoJSON.Feature<GeoJSON.Polygon> = {
+      type: 'Feature',
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [minLon, minLat],
+            [maxLon, minLat],
+            [maxLon, maxLat],
+            [minLon, maxLat],
+            [minLon, minLat],
+          ],
+        ],
+      },
+      properties: {},
+    }
+    removeCellHighlight()
+    map.addSource(CELL_HIGHLIGHT_SOURCE_ID, {
+      type: 'geojson',
+      data: polygon,
+    })
+    map.addLayer(
+      {
+        id: CELL_HIGHLIGHT_LAYER_ID,
+        type: 'fill',
+        source: CELL_HIGHLIGHT_SOURCE_ID,
+        paint: {
+          'fill-color': '#fde047',
+          'fill-opacity': 0.35,
+          'fill-outline-color': '#ca8a04',
+        },
+      },
+      'project-grid-labels'
+    )
+
+    return removeCellHighlight
+  }, [selectedCellBbox])
 
   return (
     <div className="map-wrap" style={{ width: '100%', height: '100%', position: 'relative' }}>
