@@ -37,6 +37,36 @@
   color: var(--text);
 }
 
+.panel-search {
+  flex-shrink: 0;
+  padding: 10px 14px 6px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.search-input:focus {
+  border-color: var(--accent);
+}
+
 .panel-content {
   flex: 1;
   overflow: auto;

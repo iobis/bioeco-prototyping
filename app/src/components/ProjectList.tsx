@@ -17,13 +17,25 @@ interface ProjectListProps {
   onSelectProject?: (projectId: string) => void
 }
 
+const SEARCH_DEBOUNCE_MS = 300
+
 export function ProjectList({ onHoverProject, onSelectProject }: ProjectListProps) {
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [data, setData] = useState<ProjectsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/projects?size=100')
+    const t = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(t)
+  }, [query])
+
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams({ size: '100' })
+    if (debouncedQuery) params.set('name', debouncedQuery)
+    fetch(`/api/projects?${params}`)
       .then((r) => {
         if (!r.ok) throw new Error(r.statusText)
         return r.json()
@@ -31,13 +43,28 @@ export function ProjectList({ onHoverProject, onSelectProject }: ProjectListProp
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
-
-  if (loading) return <p className="list-message">Loading projects…</p>
-  if (error) return <p className="list-message list-error">Error: {error}</p>
-  if (!data?.items?.length) return <p className="list-message">No projects found.</p>
+  }, [debouncedQuery])
 
   return (
+    <>
+      <div className="panel-search">
+        <input
+          type="search"
+          className="search-input"
+          placeholder="Search projects…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Search projects"
+        />
+      </div>
+      {loading && <p className="list-message">Loading projects…</p>}
+      {error && <p className="list-message list-error">Error: {error}</p>}
+      {!loading && !error && (!data?.items?.length) && (
+        <p className="list-message">
+          {debouncedQuery ? `No projects found for “${debouncedQuery}”.` : 'No projects found.'}
+        </p>
+      )}
+      {!loading && !error && data?.items?.length ? (
     <ul className="project-list">
       {data.items.map((p) => (
         <li
@@ -59,5 +86,7 @@ export function ProjectList({ onHoverProject, onSelectProject }: ProjectListProp
         </li>
       ))}
     </ul>
+      ) : null}
+    </>
   )
 }
