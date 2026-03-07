@@ -11,7 +11,7 @@ export default function App() {
       <Map />
       <aside className={`panel ${listOpen ? 'open' : ''}`}>
         <header className="panel-header">
-          <h1>BioEco Portal</h1>
+          <h1>GOOS BioEco Portal</h1>
           <button
             type="button"
             className="toggle-list"
