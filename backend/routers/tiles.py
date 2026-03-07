@@ -13,6 +13,7 @@ router = APIRouter()
 
 def _build_mvt_query(
     eov: Optional[str],
+    eov_category: Optional[str],
     name: Optional[str],
     start_year: Optional[int],
     end_year: Optional[int],
@@ -20,6 +21,10 @@ def _build_mvt_query(
     filters = []
     if eov and eov.strip():
         filters.append({"term": {"eov_codes": eov.strip()}})
+    if eov_category and eov_category.strip():
+        categories = [c.strip().lower() for c in eov_category.split(",") if c.strip()]
+        if categories:
+            filters.append({"terms": {"eov_keywords": categories}})
     if start_year is not None:
         filters.append({"range": {"end_year": {"gte": start_year}}})
     if end_year is not None:
@@ -44,6 +49,7 @@ def get_projects_tile(
     x: int,
     y: int,
     eov: Optional[str] = Query(None, description="EOV code to filter"),
+    eov_category: Optional[str] = Query(None, description="High-level EOV category (e.g. fish, coral); comma-separated for multiple"),
     subvariable: Optional[str] = Query(None, description="Subvariable (reserved)"),
     name: Optional[str] = Query(None, description="Filter by project name (full-text match, same as list)"),
     start_year: Optional[int] = Query(None),
@@ -62,7 +68,7 @@ def get_projects_tile(
         )
 
     body = {
-        "query": _build_mvt_query(eov, name, start_year, end_year),
+        "query": _build_mvt_query(eov, eov_category, name, start_year, end_year),
         "grid_agg": "geotile",
         "grid_precision": 5,
         "grid_type": "grid",

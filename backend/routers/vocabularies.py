@@ -19,13 +19,27 @@ def _load_json(name: str):
         raise HTTPException(status_code=500, detail=f"Failed to load {name}: {e!s}")
 
 
+def _load_eov_vocabulary():
+    """Load the single EOV vocabulary file."""
+    data = _load_json("eov_vocabulary.json")
+    return data
+
+
+@router.get("/eov_vocabulary")
+def get_eov_vocabulary():
+    """Return the full EOV vocabulary (top-level EOVs and subvariables with url, code, label)."""
+    return _load_eov_vocabulary()
+
+
 @router.get("/eovs")
 def get_eovs():
-    """Return the list of EOVs (Essential Ocean Variables) from the data folder."""
-    return _load_json("eovs.json")
+    """Return the list of top-level EOVs from the vocabulary."""
+    data = _load_eov_vocabulary()
+    return data.get("top_level_eovs", [])
 
 
 @router.get("/subvariables")
 def get_subvariables():
-    """Return the list of subvariables from the data folder."""
-    return _load_json("subvariables.json")
+    """Return the list of subvariables from the vocabulary."""
+    data = _load_eov_vocabulary()
+    return data.get("subvariables", [])

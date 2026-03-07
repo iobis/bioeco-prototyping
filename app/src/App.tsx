@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { EovVocabulary } from './eovVocabulary'
 import { Map } from './components/Map'
 import { ProjectList } from './components/ProjectList'
 import { ProjectDetailDialog } from './components/ProjectDetailDialog'
@@ -12,11 +13,20 @@ export default function App() {
   const [selectedCellBbox, setSelectedCellBbox] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [selectedEovCategories, setSelectedEovCategories] = useState<string[]>([])
+  const [eovVocabulary, setEovVocabulary] = useState<EovVocabulary | null>(null)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(t)
   }, [searchQuery])
+
+  useEffect(() => {
+    fetch('/api/eov_vocabulary')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
+      .then(setEovVocabulary)
+      .catch(() => setEovVocabulary(null))
+  }, [])
 
   return (
     <div className="app">
@@ -25,6 +35,9 @@ export default function App() {
         selectedCellBbox={selectedCellBbox}
         onCellClick={setSelectedCellBbox}
         searchQuery={debouncedSearchQuery}
+        selectedEovCategories={selectedEovCategories}
+        onEovCategoriesChange={setSelectedEovCategories}
+        eovVocabulary={eovVocabulary}
       />
       <aside className="panel">
         <header className="panel-header">
@@ -39,6 +52,8 @@ export default function App() {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             debouncedSearchQuery={debouncedSearchQuery}
+            eovCategories={selectedEovCategories}
+            eovVocabulary={eovVocabulary}
           />
         </div>
       </aside>

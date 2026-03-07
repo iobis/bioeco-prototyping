@@ -207,11 +207,63 @@
   border-radius: 50%;
 }
 
-/* Map legend – card style */
+/* Map EOV filter widget */
+.map-eov-widget {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  background: var(--surface);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  max-width: 200px;
+}
+
+.map-eov-widget-title {
+  display: block;
+  font-family: "Space Mono", monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.map-eov-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.map-eov-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.map-eov-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.map-eov-toggle span {
+  user-select: none;
+}
+
+/* Map legend – card style, right of sidebar (320px + 16px gap) */
 .map-legend {
   position: absolute;
   bottom: 16px;
-  left: 16px;
+  left: 336px;
   z-index: 10;
   background: var(--surface);
   padding: 12px 14px;

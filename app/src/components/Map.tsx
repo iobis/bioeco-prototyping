@@ -1,5 +1,6 @@
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { EovVocabulary } from '../eovVocabulary'
 
 const HIGHLIGHT_SOURCE_ID = 'project-highlight'
 const HIGHLIGHT_LAYER_ID = 'project-highlight-layer'
@@ -40,6 +41,9 @@ interface MapProps {
   selectedCellBbox?: string | null
   onCellClick?: (bbox: string | null) => void
   searchQuery?: string
+  selectedEovCategories?: string[]
+  onEovCategoriesChange?: (keys: string[]) => void
+  eovVocabulary?: EovVocabulary | null
 }
 
 export function Map({
@@ -47,10 +51,14 @@ export function Map({
   selectedCellBbox = null,
   onCellClick,
   searchQuery = '',
+  selectedEovCategories = [],
+  onEovCategoriesChange,
+  eovVocabulary = null,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const mapLoadedRef = useRef(false)
+  const [mapReady, setMapReady] = useState(false)
   const lastAppliedSearchRef = useRef<string | undefined>(undefined)
   const hoveredIdRef = useRef<string | null>(null)
   const selectedCellBboxRef = useRef<string | null>(null)
@@ -160,7 +168,7 @@ export function Map({
       zoom: 2,
     })
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-right')
+    map.addControl(new maplibregl.NavigationControl(), 'top-left')
 
     const setupGridInteractions = () => {
       if (!map.getSource(CELL_HOVER_SOURCE_ID)) {
@@ -225,6 +233,7 @@ export function Map({
 
     const onLoad = () => {
       mapLoadedRef.current = true
+      setMapReady(true)
       setupGridInteractions()
     }
     if (map.isStyleLoaded()) {
@@ -296,12 +305,17 @@ export function Map({
     const map = mapRef.current
     if (!map || !map.getStyle() || !mapLoadedRef.current) return
     const effectiveQuery = searchQuery.trim().length >= 2 ? searchQuery.trim() : ''
-    if (lastAppliedSearchRef.current === effectiveQuery) return
-    lastAppliedSearchRef.current = effectiveQuery
+    const eovCat = selectedEovCategories.length ? selectedEovCategories.join(',') : ''
+    const tileKey = `${effectiveQuery}|${eovCat}`
+    if (lastAppliedSearchRef.current === tileKey) return
+    lastAppliedSearchRef.current = tileKey
 
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    const queryParam = effectiveQuery ? `?name=${encodeURIComponent(effectiveQuery)}` : ''
-    const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryParam}`
+    const params = new URLSearchParams()
+    if (effectiveQuery) params.set('name', effectiveQuery)
+    if (eovCat) params.set('eov_category', eovCat)
+    const queryString = params.toString()
+    const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryString ? `?${queryString}` : ''}`
 
     if (map.getSource('project-tiles')) {
       if (map.getLayer('project-grid-labels')) map.removeLayer('project-grid-labels')
@@ -358,7 +372,7 @@ export function Map({
       },
       beforeId
     )
-  }, [searchQuery])
+  }, [searchQuery, selectedEovCategories, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -418,11 +432,36 @@ export function Map({
     return removeCellHighlight
   }, [selectedCellBbox])
 
+  const toggleEov = (key: string) => {
+    if (!onEovCategoriesChange) return
+    const next = selectedEovCategories.includes(key)
+      ? selectedEovCategories.filter((k) => k !== key)
+      : [...selectedEovCategories, key]
+    onEovCategoriesChange(next)
+  }
+
   return (
     <div className="map-wrap" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} className="map-container" style={{ width: '100%', height: '100%' }} />
+      {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (
+        <div className="map-eov-widget">
+          <span className="map-eov-widget-title">EOV filter</span>
+          <div className="map-eov-toggles">
+            {eovVocabulary.top_level_eovs.map(({ code, label }) => (
+              <label key={code} className="map-eov-toggle">
+                <input
+                  type="checkbox"
+                  checked={selectedEovCategories.includes(code)}
+                  onChange={() => toggleEov(code)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="map-legend">
-        <span className="map-legend-title">Projects per cell</span>
+        <span className="map-legend-title">Programmes per cell</span>
         <div className="map-legend-scale">
           <div className="map-legend-bar">
             <span style={{ background: '#f1f5f9' }} />
@@ -435,10 +474,10 @@ export function Map({
           <div className="map-legend-labels">
             <span>0</span>
             <span>1</span>
+            <span>2</span>
             <span>5</span>
-            <span>20</span>
-            <span>100</span>
-            <span>500+</span>
+            <span>10</span>
+            <span>20+</span>
           </div>
         </div>
       </div>

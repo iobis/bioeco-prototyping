@@ -13,8 +13,12 @@ import geohash
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 import argparse
+import json
 
+# Path to data dir (repo root / data)
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 project_index = "project"
 grid_index = "project_grid"
@@ -57,6 +61,8 @@ create_mapping(client, project_index, {
                     "code": {"type": "keyword"}
                 }
             },
+            "eov_keywords": {"type": "keyword"},
+            "eov_codes": {"type": "keyword"},
             "readiness_data": {"type": "keyword"},
             "readiness_requirements": {"type": "keyword"},
             "readiness_coordination": {"type": "keyword"},
@@ -82,6 +88,7 @@ create_mapping(client, grid_index, {
             "id": {"type": "keyword"},
             "project": {"type": "text"},
             "eov_codes": {"type": "keyword"},
+            "eov_keywords": {"type": "keyword"},
             "start_year": {"type": "integer"},
             "end_year": {"type": "integer"},
             "geometry": {"type": "geo_point"}
@@ -187,11 +194,91 @@ query_eovs = """
     }
 """
 sparql.setQuery(query_eovs)
-eov_results = sparql.query().convert()
+try:
+    eov_results = sparql.query().convert()
+    eov_bindings = eov_results.get("results", {}).get("bindings", [])
+except Exception as e:
+    logging.warning("EOV query failed or returned unexpected format: %s", e)
+    eov_bindings = []
+# Load EOV vocabulary for resolving URIs to top-level and subvariable codes
+def _load_eov_vocabulary():
+    path = DATA_DIR / "eov_vocabulary.json"
+    if not path.exists():
+        logging.warning("EOV vocabulary not found at %s; eov_keywords and eov_codes will be empty.", path)
+        return {"top_level_eovs": [], "subvariables": []}
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _build_eov_lookups(vocab):
+    """Build URI lookups: exact URL -> (top_level_code, eov_code). Subvariable URLs also map to their code; top-level to same code."""
+    top_level = vocab.get("top_level_eovs", [])
+    subvars = vocab.get("subvariables", [])
+    url_map = {}  # uri -> (top_level_code, eov_code)
+    # Subvariables first (longer URLs), so we can match .../fish/abundance before .../fish
+    for s in subvars:
+        code = s.get("code")
+        parent = s.get("parent_code")
+        if not code or not parent:
+            continue
+        url = (s.get("url") or "").strip()
+        if url:
+            url_map[url] = (parent, code)
+        for alt in s.get("alt_urls") or []:
+            if alt:
+                url_map[alt.strip()] = (parent, code)
+    for t in top_level:
+        code = t.get("code")
+        if not code:
+            continue
+        url = (t.get("url") or "").strip()
+        if url and url not in url_map:
+            url_map[url] = (code, code)
+        for alt in t.get("alt_urls") or []:
+            if alt and alt.strip() not in url_map:
+                url_map[alt.strip()] = (code, code)
+    # Prefix match: sort by URL length descending so longest match wins
+    sorted_urls = sorted(url_map.keys(), key=len, reverse=True)
+    return url_map, sorted_urls
+
+
+_vocab = _load_eov_vocabulary()
+_url_map, _url_prefix_order = _build_eov_lookups(_vocab)
+
+
+def resolve_eov_uri(uri):
+    """Resolve a project EOV URI to (top_level_code, eov_code) or (None, None). eov_code is the code for this EOV (subvariable or top-level)."""
+    if not uri or not _url_map:
+        return (None, None)
+    uri = uri.strip()
+    if uri in _url_map:
+        return _url_map[uri]
+    for candidate in _url_prefix_order:
+        if uri.startswith(candidate.rstrip("/") + "/") or uri.startswith(candidate + "/"):
+            return _url_map[candidate]
+    return (None, None)
+
+
+def project_eov_keywords_and_codes(eovs):
+    """From project EOVs (list of {uri, label, code}), compute eov_keywords (top-level codes) and eov_codes (all codes for filtering)."""
+    keywords = set()
+    codes = set()
+    for e in eovs or []:
+        uri = e.get("uri") or ""
+        top_code, eov_code = resolve_eov_uri(uri)
+        if top_code:
+            keywords.add(top_code)
+        if eov_code:
+            codes.add(eov_code)
+        if top_code and top_code != eov_code:
+            codes.add(top_code)  # ensure category filter matches
+    return sorted(keywords), sorted(codes)
+
+
 eov_by_id = {}
-for row in eov_results["results"]["bindings"]:
-    project_id = row["id"]["value"]
-    uri = row["eovUri"]["value"]
+for row in eov_bindings:
+    project_id = row["id"]["value"].strip()
+    uri = row["eovUri"]["value"].strip()
     label = row.get("eovLabel", {}).get("value", "")
     if "/eov/" in uri:
         code = uri.split("/eov/", 1)[1]
@@ -199,9 +286,9 @@ for row in eov_results["results"]["bindings"]:
         code = uri.rsplit("/", 1)[-1]
     if project_id not in eov_by_id:
         eov_by_id[project_id] = []
-    # dedupe by uri
     if not any(e["uri"] == uri for e in eov_by_id[project_id]):
         eov_by_id[project_id].append({"uri": uri, "label": label, "code": code})
+logging.info("EOV lookup: %d projects with at least one EOV", len(eov_by_id))
 
 for i, result in enumerate(results["results"]["bindings"]):
     if limit is not None and i >= limit:
@@ -209,7 +296,7 @@ for i, result in enumerate(results["results"]["bindings"]):
     project = {k: v["value"] for k, v in result.items()}
 
     # Stable UUID based on the project URI
-    original_uri = project["id"]
+    original_uri = project["id"].strip()
     project["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, original_uri))
     project["uri"] = original_uri
 
@@ -240,8 +327,9 @@ for i, result in enumerate(results["results"]["bindings"]):
         keywords = [kw.strip() for kw in project["keywords"].split(",") if kw.strip()]
         project["keywords"] = list(dict.fromkeys(keywords))
 
-    # EOVs as combined list of {uri, label, code}
+    # EOVs as combined list of {uri, label, code}; match by normalized URI
     project["eovs"] = eov_by_id.get(original_uri, [])
+    project["eov_keywords"], project["eov_codes"] = project_eov_keywords_and_codes(project["eovs"])
 
     # Funding categories and descriptions
     if "funding_categories" in project:
@@ -318,7 +406,8 @@ for i, result in enumerate(results["results"]["bindings"]):
             doc = {
                 "id": project["id"],
                 "project": project["name"],
-                "eov_codes": [e["code"] for e in project.get("eovs", [])],
+                "eov_codes": project.get("eov_codes") or [],
+                "eov_keywords": project.get("eov_keywords") or [],
                 "start_year": project.get("start_year"),
                 "end_year": project.get("end_year"),
                 "geometry": (lon, lat)

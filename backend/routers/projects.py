@@ -12,6 +12,7 @@ router = APIRouter()
 
 def _build_projects_query(
     eov: Optional[str] = None,
+    eov_category: Optional[str] = None,
     name: Optional[str] = None,
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
@@ -30,22 +31,13 @@ def _build_projects_query(
             }
         })
 
-    if eov and eov.strip():
-        code_or_uri = eov.strip()
-        filters.append({
-            "nested": {
-                "path": "eovs",
-                "query": {
-                    "bool": {
-                        "should": [
-                            {"term": {"eovs.code": code_or_uri}},
-                            {"term": {"eovs.uri": code_or_uri}},
-                        ],
-                        "minimum_should_match": 1,
-                    }
-                },
-            }
-        })
+    if eov_category and eov_category.strip():
+        categories = [c.strip().lower() for c in eov_category.split(",") if c.strip()]
+        if categories:
+            filters.append({"terms": {"eov_keywords": categories}})
+    elif eov and eov.strip():
+        code = eov.strip()
+        filters.append({"term": {"eov_codes": code}})
 
     if start_year is not None:
         filters.append({"range": {"end_year": {"gte": start_year}}})
@@ -82,6 +74,7 @@ def _build_projects_query(
 @router.get("")
 def list_projects(
     eov: Optional[str] = Query(None, description="EOV code or URI"),
+    eov_category: Optional[str] = Query(None, description="High-level EOV category (e.g. fish, coral); comma-separated for multiple"),
     subvariable: Optional[str] = Query(None, description="Subvariable (reserved for future use)"),
     name: Optional[str] = Query(None, description="Free-text search on name and description"),
     start_year: Optional[int] = Query(None, description="Filter projects active on or after this year"),
@@ -94,6 +87,7 @@ def list_projects(
     """List and search projects with optional filters."""
     query_body = _build_projects_query(
         eov=eov,
+        eov_category=eov_category,
         name=name,
         start_year=start_year,
         end_year=end_year,
