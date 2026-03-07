@@ -71,20 +71,20 @@ export function Map() {
               ['linear'],
               ['get', '_count'],
               0,
-              '#edf8fb',
+              '#f1f5f9',
               1,
-              '#bfd3e6',
+              '#e8eaef',
               5,
-              '#9ebcda',
+              '#dde1f5',
               20,
-              '#8c96c6',
+              '#c4c8e8',
               100,
-              '#8856a7',
+              '#9ca3d9',
               500,
-              '#810f7c',
+              '#5c6099',
             ],
-            'fill-opacity': 0.2,
-            'fill-outline-color': 'rgba(255,255,255,1)',
+            'fill-opacity': 0.18,
+            'fill-outline-color': 'rgba(255,255,255,0.5)',
           },
         },
         {
@@ -130,12 +130,12 @@ export function Map() {
         <span className="map-legend-title">Projects per cell</span>
         <div className="map-legend-scale">
           <div className="map-legend-bar">
-            <span style={{ background: '#edf8fb' }} />
-            <span style={{ background: '#bfd3e6' }} />
-            <span style={{ background: '#9ebcda' }} />
-            <span style={{ background: '#8c96c6' }} />
-            <span style={{ background: '#8856a7' }} />
-            <span style={{ background: '#810f7c' }} />
+            <span style={{ background: '#f1f5f9' }} />
+            <span style={{ background: '#e8eaef' }} />
+            <span style={{ background: '#dde1f5' }} />
+            <span style={{ background: '#c4c8e8' }} />
+            <span style={{ background: '#9ca3d9' }} />
+            <span style={{ background: '#5c6099' }} />
           </div>
           <div className="map-legend-labels">
             <span>0</span>
