@@ -1,29 +1,29 @@
 version: '3.8'
 
 services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.1
-    container_name: elasticsearch
-    ports:
-      - "9200:9200"
-    restart: unless-stopped
-    networks:
-      - elastic
-    environment:
-      - discovery.type=single-node
-      - ELASTIC_PASSWORD=FYiriTb4zH=+r0EJ877A
-      - xpack.security.http.ssl.enabled=false
+#  elasticsearch:
+#    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.1
+#    container_name: elasticsearch
+#    ports:
+#      - "9200:9200"
+#    restart: unless-stopped
+#    networks:
+#      - elastic
+#    environment:
+#      - discovery.type=single-node
+#      - ELASTIC_PASSWORD=FYiriTb4zH=+r0EJ877A
+#      - xpack.security.http.ssl.enabled=false
 
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.17.0
-    container_name: kibana
-    ports:
-      - "5601:5601"
-    restart: unless-stopped
-    networks:
-      - elastic
-    depends_on:
-      - elasticsearch
+#  kibana:
+#    image: docker.elastic.co/kibana/kibana:8.17.0
+#    container_name: kibana
+#    ports:
+#      - "5601:5601"
+#    restart: unless-stopped
+#    networks:
+#      - elastic
+#    depends_on:
+#      - elasticsearch
 
   blazegraph:
     build:

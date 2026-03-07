@@ -39,15 +39,19 @@ interface MapProps {
   hoveredProjectId?: string | null
   selectedCellBbox?: string | null
   onCellClick?: (bbox: string | null) => void
+  searchQuery?: string
 }
 
 export function Map({
   hoveredProjectId = null,
   selectedCellBbox = null,
   onCellClick,
+  searchQuery = '',
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
+  const mapLoadedRef = useRef(false)
+  const lastAppliedSearchRef = useRef<string | undefined>(undefined)
   const hoveredIdRef = useRef<string | null>(null)
   const selectedCellBboxRef = useRef<string | null>(null)
   hoveredIdRef.current = hoveredProjectId ?? null
@@ -219,10 +223,14 @@ export function Map({
       }
     }
 
-    if (map.isStyleLoaded()) {
+    const onLoad = () => {
+      mapLoadedRef.current = true
       setupGridInteractions()
+    }
+    if (map.isStyleLoaded()) {
+      onLoad()
     } else {
-      map.once('load', setupGridInteractions)
+      map.once('load', onLoad)
     }
 
     mapRef.current = map
@@ -283,6 +291,74 @@ export function Map({
 
     return removeHighlight
   }, [hoveredProjectId])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.getStyle() || !mapLoadedRef.current) return
+    const effectiveQuery = searchQuery.trim().length >= 2 ? searchQuery.trim() : ''
+    if (lastAppliedSearchRef.current === effectiveQuery) return
+    lastAppliedSearchRef.current = effectiveQuery
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const queryParam = effectiveQuery ? `?name=${encodeURIComponent(effectiveQuery)}` : ''
+    const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryParam}`
+
+    if (map.getSource('project-tiles')) {
+      if (map.getLayer('project-grid-labels')) map.removeLayer('project-grid-labels')
+      if (map.getLayer('project-grid')) map.removeLayer('project-grid')
+      map.removeSource('project-tiles')
+    }
+    map.addSource('project-tiles', {
+      type: 'vector',
+      tiles: [tileUrl],
+      minzoom: 0,
+      maxzoom: 4,
+    })
+    const beforeId = map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined
+    map.addLayer(
+      {
+        id: 'project-grid',
+        type: 'fill',
+        source: 'project-tiles',
+        'source-layer': 'aggs',
+        paint: {
+          'fill-color': [
+            'interpolate',
+            ['linear'],
+            ['get', 'unique_projects.value'],
+            0, '#f1f5f9',
+            1, '#e8eaef',
+            2, '#dde1f5',
+            5, '#c4c8e8',
+            10, '#9ca3d9',
+            20, '#5c6099',
+          ],
+          'fill-opacity': 0.18,
+          'fill-outline-color': 'rgba(255,255,255,0.5)',
+        },
+      },
+      beforeId
+    )
+    map.addLayer(
+      {
+        id: 'project-grid-labels',
+        type: 'symbol',
+        source: 'project-tiles',
+        'source-layer': 'aggs',
+        layout: {
+          'text-field': ['coalesce', ['to-string', ['get', 'unique_projects.value']], '0'],
+          'text-size': 7,
+          'text-anchor': 'center',
+          'symbol-placement': 'point',
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': '#0f172a',
+        },
+      },
+      beforeId
+    )
+  }, [searchQuery])
 
   useEffect(() => {
     const map = mapRef.current

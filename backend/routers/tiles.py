@@ -25,7 +25,14 @@ def _build_mvt_query(
     if end_year is not None:
         filters.append({"range": {"start_year": {"lte": end_year}}})
     if name and name.strip():
-        filters.append({"term": {"project": name.strip()}})
+        filters.append({
+            "match": {
+                "project": {
+                    "query": name.strip(),
+                    "fuzziness": "AUTO",
+                }
+            }
+        })
     if not filters:
         return {"match_all": {}}
     return {"bool": {"filter": filters}}
@@ -38,7 +45,7 @@ def get_projects_tile(
     y: int,
     eov: Optional[str] = Query(None, description="EOV code to filter"),
     subvariable: Optional[str] = Query(None, description="Subvariable (reserved)"),
-    name: Optional[str] = Query(None, description="Filter by project name (keyword match)"),
+    name: Optional[str] = Query(None, description="Filter by project name (full-text match, same as list)"),
     start_year: Optional[int] = Query(None),
     end_year: Optional[int] = Query(None),
     es: Elasticsearch = Depends(get_es_client),

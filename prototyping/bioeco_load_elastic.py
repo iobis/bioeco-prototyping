@@ -80,7 +80,7 @@ create_mapping(client, grid_index, {
     "mappings": {
         "properties": {
             "id": {"type": "keyword"},
-            "project": {"type": "keyword"},
+            "project": {"type": "text"},
             "eov_codes": {"type": "keyword"},
             "start_year": {"type": "integer"},
             "end_year": {"type": "integer"},
@@ -213,17 +213,27 @@ for i, result in enumerate(results["results"]["bindings"]):
     project["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, original_uri))
     project["uri"] = original_uri
 
-    # Temporal coverage and derived year fields
+    # Temporal coverage and derived year fields (single date or ISO 8601 interval start/end)
     temporal = project.get("temporal_coverage")
     if temporal:
         try:
-            dt = datetime.fromisoformat(temporal.replace("Z", ""))
-            project["start_date"] = dt.date().isoformat()
-            project["end_date"] = None
-            project["start_year"] = dt.year
-            project["end_year"] = dt.year
-        except ValueError:
-            logging.warning(f"Could not parse temporal_coverage '{temporal}' for project {project['name']}")
+            s = temporal.replace("Z", "").strip()
+            if "/" in s:
+                start_str, end_str = s.split("/", 1)
+                start_dt = datetime.fromisoformat(start_str.strip())
+                end_dt = datetime.fromisoformat(end_str.strip())
+                project["start_date"] = start_dt.date().isoformat()
+                project["end_date"] = end_dt.date().isoformat()
+                project["start_year"] = start_dt.year
+                project["end_year"] = end_dt.year
+            else:
+                dt = datetime.fromisoformat(s)
+                project["start_date"] = dt.date().isoformat()
+                project["end_date"] = None
+                project["start_year"] = dt.year
+                project["end_year"] = dt.year
+        except (ValueError, TypeError) as e:
+            logging.warning(f"Could not parse temporal_coverage '{temporal}' for project {project['name']}: {e}")
 
     # Keywords as a list
     if "keywords" in project:

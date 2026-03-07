@@ -25,9 +25,10 @@ interface ProjectListProps {
   onSelectProject?: (projectId: string) => void
   cellBbox?: string | null
   onClearCellFilter?: () => void
+  searchQuery?: string
+  onSearchQueryChange?: (q: string) => void
+  debouncedSearchQuery?: string
 }
-
-const SEARCH_DEBOUNCE_MS = 300
 
 /** Top-level biological EOV categories (order for display). More specific keys first so "zooplankton" maps to plankton. */
 const TOP_LEVEL_EOV_ORDER: Array<{ key: string; label: string; keywords: string[] }> = [
@@ -101,22 +102,23 @@ const EOV_PALETTE_BRIGHT = [
 ]
 
 
-export function ProjectList({ onHoverProject, onSelectProject, cellBbox = null, onClearCellFilter }: ProjectListProps) {
-  const [query, setQuery] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
+export function ProjectList({
+  onHoverProject,
+  onSelectProject,
+  cellBbox = null,
+  onClearCellFilter,
+  searchQuery = '',
+  onSearchQueryChange,
+  debouncedSearchQuery = '',
+}: ProjectListProps) {
   const [data, setData] = useState<ProjectsResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS)
-    return () => clearTimeout(t)
-  }, [query])
-
-  useEffect(() => {
     setLoading(true)
     const params = new URLSearchParams({ size: '100' })
-    if (debouncedQuery) params.set('name', debouncedQuery)
+    if (debouncedSearchQuery) params.set('name', debouncedSearchQuery)
     if (cellBbox?.trim()) params.set('bbox', cellBbox.trim())
     fetch(`/api/projects?${params}`)
       .then((r) => {
@@ -126,7 +128,7 @@ export function ProjectList({ onHoverProject, onSelectProject, cellBbox = null, 
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [debouncedQuery, cellBbox])
+  }, [debouncedSearchQuery, cellBbox])
 
   return (
     <>
@@ -143,8 +145,8 @@ export function ProjectList({ onHoverProject, onSelectProject, cellBbox = null, 
           type="search"
           className="search-input"
           placeholder="Search projects…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={searchQuery}
+          onChange={(e) => onSearchQueryChange?.(e.target.value)}
           aria-label="Search projects"
         />
       </div>
@@ -152,7 +154,7 @@ export function ProjectList({ onHoverProject, onSelectProject, cellBbox = null, 
       {error && <p className="list-message list-error">Error: {error}</p>}
       {!loading && !error && (!data?.items?.length) && (
         <p className="list-message">
-          {debouncedQuery ? `No projects found for “${debouncedQuery}”.` : 'No projects found.'}
+          {debouncedSearchQuery ? `No projects found for “${debouncedSearchQuery}”.` : 'No projects found.'}
         </p>
       )}
       {!loading && !error && data?.items?.length ? (
@@ -178,7 +180,7 @@ export function ProjectList({ onHoverProject, onSelectProject, cellBbox = null, 
               if (!grouped.length) return null
               return (
                 <div className="project-eov-badges">
-                  {grouped.map(({ key, label, bg, eovNames }) => (
+                  {grouped.map(({ key, label, bg }) => (
                     <span
                       key={key}
                       className="project-eov-bubble"
