@@ -447,7 +447,10 @@ export function Map({
         <div className="map-eov-widget">
           <span className="map-eov-widget-title">EOV filter</span>
           <div className="map-eov-toggles">
-            {eovVocabulary.top_level_eovs.map(({ code, label }) => (
+            {[...eovVocabulary.top_level_eovs]
+              .slice()
+              .sort((a, b) => a.label.localeCompare(b.label))
+              .map(({ code, label }) => (
               <label key={code} className="map-eov-toggle">
                 <input
                   type="checkbox"
