@@ -13,7 +13,7 @@ from pathlib import Path
 import argparse
 import json
 
-from util import create_mapping, create_es_client
+from util import create_es_client
 
 
 project_index = "project"
@@ -33,70 +33,91 @@ GRAPH_PATH = Path("/Users/pieter/IPOfI Dropbox/Pieter Provoost/werk/projects/GOO
 
 client = create_es_client()
 
-create_mapping(client, project_index, {
-    "mappings": {
-        "properties": {
-            "id": {"type": "keyword"},
-            "uri": {"type": "keyword"},
-            "name": {
-                "type": "text",
-                "fields": {
-                    "keyword": {"type": "keyword"}
-                }
-            },
-            "description": {"type": "text"},
-            "temporal_coverage": {"type": "date"},
-            "start_date": {"type": "date"},
-            "end_date": {"type": "date"},
-            "start_year": {"type": "integer"},
-            "end_year": {"type": "integer"},
-            "url": {"type": "keyword"},
-            "keywords": {"type": "keyword"},
-            "eovs": {
-                "type": "nested",
-                "properties": {
-                    "uri": {"type": "keyword"},
-                    "label": {
-                        "type": "text",
-                        "fields": {"keyword": {"type": "keyword"}}
-                    },
-                    "code": {"type": "keyword"}
-                }
-            },
-            "eov_keywords": {"type": "keyword"},
-            "eov_codes": {"type": "keyword"},
-            "readiness_data": {"type": "keyword"},
-            "readiness_requirements": {"type": "keyword"},
-            "readiness_coordination": {"type": "keyword"},
-            "maintenance_frequency": {"type": "keyword"},
-            "publishing_principles": {"type": "keyword"},
-            "funding_categories": {"type": "keyword"},
-            "funding_descriptions": {"type": "text"},
-            "additional_properties": {
-                "type": "nested",
-                "properties": {
-                    "name": {"type": "keyword"},
-                    "value": {"type": "keyword"}
-                }
-            },
-            "geometry": {"type": "geo_shape"}
-        }
-    }
-})
 
-create_mapping(client, grid_index, {
-    "mappings": {
-        "properties": {
-            "id": {"type": "keyword"},
-            "project": {"type": "text"},
-            "eov_codes": {"type": "keyword"},
-            "eov_keywords": {"type": "keyword"},
-            "start_year": {"type": "integer"},
-            "end_year": {"type": "integer"},
-            "geometry": {"type": "geo_point"}
+def ensure_indices(clear_indexes: bool = False):
+    """Create indices and mappings. Optionally clear existing indices first."""
+    project_mapping = {
+        "mappings": {
+            "properties": {
+                "id": {"type": "keyword"},
+                "uri": {"type": "keyword"},
+                "name": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {"type": "keyword"}
+                    }
+                },
+                "description": {"type": "text"},
+                "temporal_coverage": {"type": "date"},
+                "start_date": {"type": "date"},
+                "end_date": {"type": "date"},
+                "start_year": {"type": "integer"},
+                "end_year": {"type": "integer"},
+                "url": {"type": "keyword"},
+                "keywords": {"type": "keyword"},
+                "eovs": {
+                    "type": "nested",
+                    "properties": {
+                        "uri": {"type": "keyword"},
+                        "label": {
+                            "type": "text",
+                            "fields": {"keyword": {"type": "keyword"}}
+                        },
+                        "code": {"type": "keyword"}
+                    }
+                },
+                "eov_keywords": {"type": "keyword"},
+                "eov_codes": {"type": "keyword"},
+                "readiness_data": {"type": "keyword"},
+                "readiness_requirements": {"type": "keyword"},
+                "readiness_coordination": {"type": "keyword"},
+                "maintenance_frequency": {"type": "keyword"},
+                "publishing_principles": {"type": "keyword"},
+                "funding_categories": {"type": "keyword"},
+                "funding_descriptions": {"type": "text"},
+                "additional_properties": {
+                    "type": "nested",
+                    "properties": {
+                        "name": {"type": "keyword"},
+                        "value": {"type": "keyword"}
+                    }
+                },
+                "geometry": {"type": "geo_shape"}
+            }
         }
     }
-})
+
+    grid_mapping = {
+        "mappings": {
+            "properties": {
+                "id": {"type": "keyword"},
+                "project": {"type": "text"},
+                "eov_codes": {"type": "keyword"},
+                "eov_keywords": {"type": "keyword"},
+                "start_year": {"type": "integer"},
+                "end_year": {"type": "integer"},
+                "geometry": {"type": "geo_point"}
+            }
+        }
+    }
+
+    for index, mapping in ((project_index, project_mapping), (grid_index, grid_mapping)):
+        exists = client.indices.exists(index=index)
+        if clear_indexes and exists:
+            logging.info("Deleting existing index %s", index)
+            client.indices.delete(index=index)
+            exists = False
+        if not exists:
+            logging.info("Creating index %s with mapping", index)
+            client.indices.create(index=index, body=mapping)
+            client.indices.put_settings(
+                index=index,
+                body={
+                    "index": {
+                        "refresh_interval": "30s"
+                    }
+                },
+            )
 
 # Load EOV vocabulary for resolving URIs to top-level and subvariable codes
 
@@ -110,10 +131,15 @@ def load_eov_vocabulary():
 
 
 def build_eov_lookups(vocab):
-    """Build URI lookups: exact URL -> (top_level_code, eov_code). Subvariable URLs also map to their code; top-level to same code."""
+    """Build URI lookups:
+    - url_map: any known URI (canonical or alternative) -> (top_level_code, eov_code)
+    - sorted_urls: URIs sorted by length (desc) for prefix matching
+    - canonical_uri_map: any known URI -> canonical EOV URI (from vocabulary url)
+    """
     top_level = vocab.get("top_level_eovs", [])
     subvars = vocab.get("subvariables", [])
     url_map = {}  # uri -> (top_level_code, eov_code)
+    canonical_uri_map = {}
     # Subvariables first (longer URLs), so we can match .../fish/abundance before .../fish
     for s in subvars:
         code = s.get("code")
@@ -123,39 +149,57 @@ def build_eov_lookups(vocab):
         url = (s.get("url") or "").strip()
         if url:
             url_map[url] = (parent, code)
-        for alt in s.get("alt_urls") or []:
+            canonical_uri_map[url] = url
+        # Alternate URIs for subvariables
+        for alt in (s.get("alt_uris") or []):
             if alt:
-                url_map[alt.strip()] = (parent, code)
+                a = alt.strip()
+                url_map[a] = (parent, code)
+                canonical_uri_map[a] = url
     for t in top_level:
         code = t.get("code")
         if not code:
             continue
         url = (t.get("url") or "").strip()
-        if url and url not in url_map:
-            url_map[url] = (code, code)
-        for alt in t.get("alt_urls") or []:
-            if alt and alt.strip() not in url_map:
-                url_map[alt.strip()] = (code, code)
+        if url:
+            if url not in url_map:
+                url_map[url] = (code, code)
+            canonical_uri_map[url] = url
+        # Alternate URIs for top-level EOVs
+        for alt in (t.get("alt_uris") or []):
+            if alt:
+                a = alt.strip()
+                if a not in url_map:
+                    url_map[a] = (code, code)
+                canonical_uri_map[a] = url
     # Prefix match: sort by URL length descending so longest match wins
     sorted_urls = sorted(url_map.keys(), key=len, reverse=True)
-    return url_map, sorted_urls
+    return url_map, sorted_urls, canonical_uri_map
 
 
-_vocab = load_eov_vocabulary()
-_url_map, _url_prefix_order = build_eov_lookups(_vocab)
+vocab = load_eov_vocabulary()
+url_map, url_prefix_order, canonical_uri_map = build_eov_lookups(vocab)
 
 
 def resolve_eov_uri(uri: str):
     """Resolve a project EOV URI to (top_level_code, eov_code) or (None, None)."""
-    if not uri or not _url_map:
+    if not uri or not url_map:
         return (None, None)
     uri = uri.strip()
-    if uri in _url_map:
-        return _url_map[uri]
-    for candidate in _url_prefix_order:
+    if uri in url_map:
+        return url_map[uri]
+    for candidate in url_prefix_order:
         if uri.startswith(candidate.rstrip("/") + "/") or uri.startswith(candidate + "/"):
-            return _url_map[candidate]
+            return url_map[candidate]
     return (None, None)
+
+
+def canonicalize_eov_uri(uri: str) -> str:
+    """Return the canonical EOV URI for any known URI (canonical or alternative)."""
+    if not uri:
+        return uri
+    u = uri.strip()
+    return canonical_uri_map.get(u, u)
 
 
 def project_eov_keywords_and_codes(eovs):
@@ -174,12 +218,63 @@ def project_eov_keywords_and_codes(eovs):
     return sorted(keywords), sorted(codes)
 
 
+def get_schema(node: dict, term: str):
+    """
+    Resolve a JSON-LD property assuming the default context is schema:
+    - Prefer explicit 'schema:term' if present
+    - Fall back to bare 'term' otherwise
+    """
+    schema_key = f"schema:{term}"
+    if schema_key in node:
+        return node.get(schema_key)
+    return node.get(term)
+
+
 def as_list(value):
     if value is None:
         return []
     if isinstance(value, list):
         return value
     return [value]
+
+
+def extract_wkt(node: dict) -> str | None:
+    """
+    Extract WKT geometry from either:
+    - geosparql:hasGeometry/geosparql:asWKT/@value
+    - areaServed[*].geo.geosparql:asWKT/@value
+    and strip any leading CRS prefix like "<...> POLYGON(...)"
+    """
+    # 1) Direct geosparql:hasGeometry
+    geom = node.get("geosparql:hasGeometry")
+    if isinstance(geom, dict):
+        as_wkt = geom.get("geosparql:asWKT")
+        if isinstance(as_wkt, dict):
+            raw = as_wkt.get("@value")
+            if isinstance(raw, str) and raw.strip():
+                s = raw.strip()
+                if s.startswith("<") and ">" in s:
+                    s = s.split(">", 1)[1].strip()
+                return s
+
+    # 2) areaServed[*].geo.geosparql:asWKT
+    area_served = get_schema(node, "areaServed")
+    for place in as_list(area_served):
+        if not isinstance(place, dict):
+            continue
+        geo = place.get("geo")
+        if not isinstance(geo, dict):
+            continue
+        as_wkt = geo.get("geosparql:asWKT")
+        if isinstance(as_wkt, dict):
+            raw = as_wkt.get("@value")
+            if isinstance(raw, str) and raw.strip():
+                s = raw.strip()
+                if s.startswith("<") and ">" in s:
+                    s = s.split(">", 1)[1].strip()
+                return s
+
+    return None
 
 
 def load_graph(source: str):
@@ -213,7 +308,9 @@ def load_graph(source: str):
     return graph
 
 
-def main(input_source: str | None):
+def main(input_source: str | None, clear_indexes: bool = False, print_indexed_json: bool = False):
+    ensure_indices(clear_indexes=clear_indexes)
+
     source = input_source or str(GRAPH_PATH)
     graph = load_graph(source)
 
@@ -221,8 +318,10 @@ def main(input_source: str | None):
     results_bindings = []
     eov_bindings = []
 
+    project_types = {"schema:ResearchProject", "ResearchProject", "schema:Project", "Project"}
+
     for node in graph:
-        if node.get("@type") != "schema:ResearchProject":
+        if node.get("@type") not in project_types:
             continue
 
         proj_id = node.get("@id")
@@ -233,29 +332,75 @@ def main(input_source: str | None):
         b = {
             "id": {"value": proj_id},
         }
-        name = node.get("schema:name")
+        # Assume default context is schema:, but accept bare terms too
+        name = get_schema(node, "name")
         if name:
             b["name"] = {"value": name}
-        desc = node.get("schema:description")
+        desc = get_schema(node, "description")
         if desc:
             b["description"] = {"value": desc}
-        temporal = node.get("schema:temporalCoverage")
+        temporal = get_schema(node, "temporalCoverage")
         if temporal:
             b["temporal_coverage"] = {"value": temporal}
-        url = node.get("schema:url")
+        url = get_schema(node, "url")
         if url:
             b["url"] = {"value": url}
 
-        # Keywords (if present as schema:keywords)
-        kw = node.get("schema:keywords")
+        # Keywords (schema:keywords or keywords) – normalise to a comma-separated list of human-readable terms,
+        # and also treat any keyword URLs that match the EOV vocabulary as EOVs (but avoid duplicating EOV names
+        # in the general keywords list).
+        kw = get_schema(node, "keywords")
         if kw:
             kws = as_list(kw)
-            kw_str = ",".join(str(x) for x in kws if str(x).strip())
-            if kw_str:
-                b["keywords"] = {"value": kw_str}
+            keyword_terms: list[str] = []
+            for item in kws:
+                if isinstance(item, dict):
+                    # Prefer a name on the keyword object
+                    name_val = get_schema(item, "name")
+                    url_val = get_schema(item, "url")
+
+                    # Treat URLs as potential EOV identifiers
+                    uris: list[str] = []
+                    if isinstance(url_val, list):
+                        uris = [str(u).strip() for u in url_val if str(u).strip()]
+                    elif url_val:
+                        uris = [str(url_val).strip()]
+
+                    is_eov_keyword = False
+                    for uri_candidate in uris:
+                        if not uri_candidate:
+                            continue
+                        top_code, eov_code = resolve_eov_uri(uri_candidate)
+                        if top_code or eov_code:
+                            is_eov_keyword = True
+                            # Register this as an EOV binding so it contributes to project['eovs']
+                            eov_bindings.append(
+                                {
+                                    "id": {"value": proj_id},
+                                    "eovUri": {"value": uri_candidate},
+                                    "eovLabel": {"value": str(name_val) if name_val else ""},
+                                }
+                            )
+                    # Only include non‑EOV keyword names in the general keywords list
+                    if name_val and not is_eov_keyword:
+                        keyword_terms.append(str(name_val))
+                else:
+                    # Simple string keyword
+                    s = str(item).strip()
+                    if s:
+                        keyword_terms.append(s)
+            # De-duplicate while preserving order
+            seen = set()
+            deduped = []
+            for term in keyword_terms:
+                if term not in seen:
+                    seen.add(term)
+                    deduped.append(term)
+            if deduped:
+                b["keywords"] = {"value": ",".join(deduped)}
 
         # Additional properties: extract readiness* and build concatenated string for generic ones
-        add_props = as_list(node.get("schema:additionalProperty"))
+        add_props = as_list(get_schema(node, "additionalProperty"))
         ap_pairs = []
         for ap in add_props:
             if not isinstance(ap, dict):
@@ -282,19 +427,15 @@ def main(input_source: str | None):
         # For now we keep the simple structure used in the graph (MonetaryGrant without extra fields),
         # so funding_categories / funding_descriptions are left empty.
 
-        # Geometry
-        geom = node.get("geosparql:hasGeometry")
-        if isinstance(geom, dict):
-            as_wkt = geom.get("geosparql:asWKT")
-            if isinstance(as_wkt, dict):
-                wkt_val = as_wkt.get("@value")
-                if wkt_val:
-                    b["geometry"] = {"value": wkt_val}
+        # Geometry: from geosparql:hasGeometry or areaServed[*].geo.geosparql:asWKT
+        wkt_val = extract_wkt(node)
+        if wkt_val:
+            b["geometry"] = {"value": wkt_val}
 
         results_bindings.append(b)
 
         # VariableMeasured → eov_bindings
-        vars_measured = as_list(node.get("schema:variableMeasured"))
+        vars_measured = as_list(get_schema(node, "variableMeasured"))
         for vm in vars_measured:
             if not isinstance(vm, dict):
                 continue
@@ -315,12 +456,19 @@ def main(input_source: str | None):
     eov_by_id = {}
     for row in eov_bindings:
         project_id = row["id"]["value"].strip()
-        uri = row["eovUri"]["value"].strip()
+        raw_uri = row["eovUri"]["value"].strip()
+        uri = canonicalize_eov_uri(raw_uri)
         label = row.get("eovLabel", {}).get("value", "")
-        if "/eov/" in uri:
+
+        # Prefer vocabulary-derived code; fall back to slug if unknown
+        top_code, eov_code = resolve_eov_uri(uri)
+        if eov_code:
+            code = eov_code
+        elif "/eov/" in uri:
             code = uri.split("/eov/", 1)[1]
         else:
             code = uri.rsplit("/", 1)[-1]
+
         if project_id not in eov_by_id:
             eov_by_id[project_id] = []
         if not any(e["uri"] == uri for e in eov_by_id[project_id]):
@@ -328,8 +476,6 @@ def main(input_source: str | None):
     logging.info("EOV lookup: %d projects with at least one EOV", len(eov_by_id))
 
     for i, result in enumerate(results["results"]["bindings"]):
-        if limit is not None and i >= limit:
-            break
         project = {k: v["value"] for k, v in result.items()}
 
         # Stable UUID based on the project URI
@@ -410,6 +556,10 @@ def main(input_source: str | None):
 
         logging.info(f"Loading project {project.get('name', '')} ({i + 1}/{len(results['results']['bindings'])})")
 
+        if print_indexed_json:
+            # Pretty-print the project document that will be indexed
+            print(json.dumps(project, indent=2, sort_keys=True))
+
         cells = []
         if "geometry" in project:
             geometry = wkt.loads(project["geometry"])
@@ -459,6 +609,16 @@ if __name__ == "__main__":
         dest="input_source",
         help=f"Path or URL to JSON-LD/JSON source; defaults to {GRAPH_PATH}",
     )
+    parser.add_argument(
+        "--clear-indexes",
+        action="store_true",
+        help="Delete and recreate the project and project_grid indices before loading data (default: keep existing indices).",
+    )
+    parser.add_argument(
+        "--print-indexed-json",
+        action="store_true",
+        help="Print each indexed project document as formatted JSON to stdout.",
+    )
     args = parser.parse_args()
-    main(args.input_source)
+    main(args.input_source, clear_indexes=args.clear_indexes, print_indexed_json=args.print_indexed_json)
 

@@ -10,7 +10,7 @@ export interface TopLevelEov {
   code: string
   label: string
   badge?: EovBadge
-  alt_urls?: string[]
+  alt_uris?: string[]
 }
 
 export interface Subvariable {
@@ -18,7 +18,7 @@ export interface Subvariable {
   code: string
   label: string
   parent_code: string
-  alt_urls?: string[]
+  alt_uris?: string[]
 }
 
 export interface EovVocabulary {
@@ -52,7 +52,7 @@ export function buildEovResolver(vocab: EovVocabulary | null): (uri: string) => 
     const entry = { code: t.code, label: t.label, badge: t.badge ?? FALLBACK_PALETTE[0] }
     const url = t.url?.trim()
     if (url) uriMap.set(url, entry)
-    for (const alt of t.alt_urls ?? []) {
+    for (const alt of t.alt_uris ?? []) {
       if (alt?.trim()) uriMap.set(alt.trim(), entry)
     }
   }
@@ -63,7 +63,7 @@ export function buildEovResolver(vocab: EovVocabulary | null): (uri: string) => 
       : { code: s.parent_code, label: s.parent_code, badge: FALLBACK_PALETTE[0] }
     const url = s.url?.trim()
     if (url) uriMap.set(url, entry)
-    for (const alt of s.alt_urls ?? []) {
+    for (const alt of s.alt_uris ?? []) {
       if (alt?.trim()) uriMap.set(alt.trim(), entry)
     }
   }
