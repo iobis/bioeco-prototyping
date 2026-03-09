@@ -2,6 +2,7 @@
 node_modules
 .vscode
 .DS_Store
-data
+data/*
+!data/eov_vocabulary.json
 __pycache__
 app/dist

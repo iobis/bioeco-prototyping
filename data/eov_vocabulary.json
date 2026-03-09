@@ -1,0 +1,106 @@
+{
+  "version": "1.0",
+  "top_level_eovs": [
+    {
+      "url": "https://goosocean.org/eov/phytoplankton",
+      "code": "phyto",
+      "label": "Phytoplankton biomass and diversity",
+      "badge": { "bg": "#22c55e", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/17507"]
+    },
+    {
+      "url": "https://goosocean.org/eov/zooplankton",
+      "code": "zoo",
+      "label": "Zooplankton biomass and diversity",
+      "badge": { "bg": "#0ea5e9", "fg": "#fff" },
+      "alt_uris": [
+        "https://vocab.nerc.ac.uk/collection/EXV/current/EXV057/",
+        "https://goosocean.org/document/17509"
+      ]
+    },
+    {
+      "url": "https://goosocean.org/eov/fish",
+      "code": "fish",
+      "label": "Fish abundance and distribution",
+      "badge": { "bg": "#73C3D0", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/17510"]
+    },
+    {
+      "url": "https://goosocean.org/eov/turtles",
+      "code": "turtle",
+      "label": "Sea turtles abundance and distribution",
+      "badge": { "bg": "#86A59C", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/36268"]
+    },
+    {
+      "url": "https://goosocean.org/eov/birds",
+      "code": "bird",
+      "label": "Seabirds abundance and distribution",
+      "badge": { "bg": "#A2A79E", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/36267"]
+    },
+    {
+      "url": "https://goosocean.org/eov/mammals",
+      "code": "mammal",
+      "label": "Marine mammal abundance and distribution",
+      "badge": { "bg": "#a78bfa", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/36266"]
+    },
+    {
+      "url": "https://goosocean.org/eov/coral",
+      "code": "coral",
+      "label": "Coral cover and composition",
+      "badge": { "bg": "#fb7185", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/17512"]
+    },
+    {
+      "url": "https://goosocean.org/eov/seagrass",
+      "code": "seagrass",
+      "label": "Seagrass cover and composition",
+      "badge": { "bg": "#22c55e", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/17513"]
+    },
+    {
+      "url": "https://goosocean.org/eov/macroalgal",
+      "code": "macroalgae",
+      "label": "Macroalgal canopy cover and composition",
+      "badge": { "bg": "#65a30d", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/17515"]
+    },
+    {
+      "url": "https://goosocean.org/eov/mangrove",
+      "code": "mangrove",
+      "label": "Mangrove cover and composition",
+      "badge": { "bg": "#15803d", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/17514"]
+    },
+    {
+      "url": "https://goosocean.org/eov/microbe",
+      "code": "microbe",
+      "label": "Microbe biomass and diversity",
+      "badge": { "bg": "#eab308", "fg": "#1a1a1a" },
+      "alt_uris": ["https://goosocean.org/document/36264"]
+    },
+    {
+      "url": "https://goosocean.org/eov/invertebrate",
+      "code": "invert",
+      "label": "Benthic invertebrate abundance and distribution",
+      "badge": { "bg": "#F45B69", "fg": "#fff" },
+      "alt_uris": ["https://goosocean.org/document/36269"]
+    }
+  ],
+  "subvariables": [
+    { "url": "https://goosocean.org/eov/fish/abundance", "code": "fish/abundance", "label": "Fish abundance", "parent_code": "fish" },
+    { "url": "https://goosocean.org/eov/fish/abundance/by_size_age_stage", "code": "fish/abundance/by_size_age_stage", "label": "Fish abundance by size/age/stage", "parent_code": "fish" },
+    { "url": "https://goosocean.org/eov/fish/biomass/by_size_age_stage", "code": "fish/biomass/by_size_age_stage", "label": "Fish biomass by size/age/stage", "parent_code": "fish" },
+    { "url": "https://goosocean.org/eov/fish/community_composition", "code": "fish/community_composition", "label": "Fish community composition", "parent_code": "fish" },
+    { "url": "https://goosocean.org/eov/fish/distribution", "code": "fish/distribution", "label": "Fish distribution", "parent_code": "fish" },
+    { "url": "https://goosocean.org/eov/fish/ecosystem_functioning", "code": "fish/ecosystem_functioning", "label": "Fish ecosystem functioning", "parent_code": "fish" },
+    { "url": "https://goosocean.org/eov/fish/genetic_composition", "code": "fish/genetic_composition", "label": "Fish genetic composition", "parent_code": "fish" },
+    { "url": "https://goosocean.org/eov/fish/traits", "code": "fish/traits", "label": "Fish species traits", "parent_code": "fish" },
+    { "url": "https://goosocean.org/eov/coral/composition", "code": "coral/composition", "label": "Hard coral community composition", "parent_code": "coral" },
+    { "url": "https://goosocean.org/eov/coral/composition/abundance", "code": "coral/composition/abundance", "label": "Hard coral community composition - community abundance", "parent_code": "coral" },
+    { "url": "https://goosocean.org/eov/invertebrate/abundance", "code": "invertebrate/abundance", "label": "Invertebrate abundance", "parent_code": "invertebrate" },
+    { "url": "https://goosocean.org/eov/invertebrate/distribution", "code": "invertebrate/distribution", "label": "Invertebrate distribution", "parent_code": "invertebrate" }
+  ]
+}
