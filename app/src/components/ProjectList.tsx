@@ -139,7 +139,7 @@ export function ProjectList({
                       key={key}
                       className="project-eov-bubble"
                       style={{ backgroundColor: bg }}
-                      title={label}
+                      data-label={label}
                       aria-label={label}
                     />
                   ))}
