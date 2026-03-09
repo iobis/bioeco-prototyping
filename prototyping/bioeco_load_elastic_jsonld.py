@@ -342,6 +342,13 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
         temporal = get_schema(node, "temporalCoverage")
         if temporal:
             b["temporal_coverage"] = {"value": temporal}
+        # Founding / dissolution dates (used as temporal bounds when present)
+        founding = get_schema(node, "foundingDate")
+        if founding:
+            b["founding_date"] = {"value": founding}
+        dissolution = get_schema(node, "dissolutionDate")
+        if dissolution:
+            b["dissolution_date"] = {"value": dissolution}
         url = get_schema(node, "url")
         if url:
             b["url"] = {"value": url}
@@ -483,25 +490,44 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
         project["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, original_uri))
         project["uri"] = original_uri
 
-        # Temporal coverage and derived year fields (single date or ISO 8601 interval start/end)
+        # Temporal coverage and derived year fields.
+        # 1) Prefer foundingDate / dissolutionDate when present.
+        founding = project.get("founding_date")
+        dissolution = project.get("dissolution_date")
+        if founding:
+            try:
+                fd = datetime.fromisoformat(founding.replace("Z", "").strip())
+                project["start_date"] = fd.date().isoformat()
+                project["start_year"] = fd.year
+            except (ValueError, TypeError) as e:
+                logging.warning(f"Could not parse founding_date '{founding}' for project {project.get('name', '')}: {e}")
+        if dissolution:
+            try:
+                dd = datetime.fromisoformat(dissolution.replace("Z", "").strip())
+                project["end_date"] = dd.date().isoformat()
+                project["end_year"] = dd.year
+            except (ValueError, TypeError) as e:
+                logging.warning(f"Could not parse dissolution_date '{dissolution}' for project {project.get('name', '')}: {e}")
+
+        # 2) Fallback to temporalCoverage only where bounds are still missing.
         temporal = project.get("temporal_coverage")
-        if temporal:
+        if temporal and ("start_year" not in project or "end_year" not in project):
             try:
                 s = temporal.replace("Z", "").strip()
                 if "/" in s:
                     start_str, end_str = s.split("/", 1)
                     start_dt = datetime.fromisoformat(start_str.strip())
                     end_dt = datetime.fromisoformat(end_str.strip())
-                    project["start_date"] = start_dt.date().isoformat()
-                    project["end_date"] = end_dt.date().isoformat()
-                    project["start_year"] = start_dt.year
-                    project["end_year"] = end_dt.year
+                    project.setdefault("start_date", start_dt.date().isoformat())
+                    project.setdefault("end_date", end_dt.date().isoformat())
+                    project.setdefault("start_year", start_dt.year)
+                    project.setdefault("end_year", end_dt.year)
                 else:
                     dt = datetime.fromisoformat(s)
-                    project["start_date"] = dt.date().isoformat()
-                    project["end_date"] = None
-                    project["start_year"] = dt.year
-                    project["end_year"] = dt.year
+                    project.setdefault("start_date", dt.date().isoformat())
+                    project.setdefault("end_date", None)
+                    project.setdefault("start_year", dt.year)
+                    project.setdefault("end_year", dt.year)
             except (ValueError, TypeError) as e:
                 logging.warning(f"Could not parse temporal_coverage '{temporal}' for project {project.get('name', '')}: {e}")
 
