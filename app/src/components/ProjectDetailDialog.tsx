@@ -50,7 +50,7 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
     <div className="dialog-backdrop" onClick={handleBackdropClick} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
       <div className="dialog-box">
         <header className="dialog-header">
-          <h2 id="dialog-title" className="dialog-title">Project details</h2>
+          <h2 id="dialog-title" className="dialog-title">Programme details</h2>
           <button type="button" className="dialog-close" onClick={onClose} aria-label="Close">×</button>
         </header>
         <div className="dialog-body">
