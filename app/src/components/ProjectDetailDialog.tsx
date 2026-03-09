@@ -8,6 +8,7 @@ export interface ProjectDetail {
   start_year?: number
   end_year?: number
   eovs?: Array<{ code?: string; name?: string; uri?: string }>
+  contacts?: Array<{ name?: string; email?: string; url?: string; contact_type?: string }>
 }
 
 interface ProjectDetailDialogProps {
@@ -73,6 +74,39 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                     {project.eovs.map((eov, i) => (
                       <li key={i}>{eov.name ?? eov.code ?? eov.uri ?? '—'}</li>
                     ))}
+                  </ul>
+                </div>
+              ) : null}
+              {project.contacts?.length ? (
+                <div className="dialog-section">
+                  <span className="dialog-meta-label">Contacts</span>
+                  <ul className="dialog-eov-list">
+                    {project.contacts.map((c, i) => {
+                      const parts: string[] = []
+                      if (c.name) parts.push(c.name)
+                      // if (c.contact_type) parts.push(c.contact_type)
+                      return (
+                        <li key={i}>
+                          {parts.join(' – ')}
+                          {c.email && (
+                            <>
+                              {' – '}
+                              <a href={`mailto:${c.email}`} className="dialog-link dialog-link-muted">
+                                {c.email}
+                              </a>
+                            </>
+                          )}
+                          {c.url && (
+                            <>
+                              {' – '}
+                              <a href={c.url} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
+                                Link
+                              </a>
+                            </>
+                          )}
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               ) : null}

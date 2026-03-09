@@ -82,6 +82,15 @@ def ensure_indices(clear_indexes: bool = False):
                         "value": {"type": "keyword"}
                     }
                 },
+                "contacts": {
+                    "type": "nested",
+                    "properties": {
+                        "name": {"type": "keyword"},
+                        "email": {"type": "keyword"},
+                        "url": {"type": "keyword"},
+                        "contact_type": {"type": "keyword"}
+                    }
+                },
                 "geometry": {"type": "geo_shape"}
             }
         }
@@ -445,6 +454,30 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
             # Match the loader's convention: "||"‑separated string, later split into a list.
             b["funding_descriptions"] = {"value": "||".join(funding_names)}
 
+        # Contacts: handle schema:contactPoint / contactPoint entries.
+        contact_entries = as_list(get_schema(node, "contactPoint"))
+        contacts: list[dict] = []
+        for c in contact_entries:
+            if not isinstance(c, dict):
+                continue
+            name_c = get_schema(c, "name")
+            email_c = get_schema(c, "email")
+            url_c = get_schema(c, "url")
+            type_c = get_schema(c, "contactType")
+            if not (name_c or email_c or url_c):
+                continue
+            contacts.append(
+                {
+                    "name": str(name_c).strip() if name_c else "",
+                    "email": str(email_c).strip() if email_c else "",
+                    "url": str(url_c).strip() if url_c else "",
+                    "contact_type": str(type_c).strip() if type_c else "",
+                }
+            )
+        if contacts:
+            # Store as JSON string in the intermediate binding; converted to objects later.
+            b["contacts"] = {"value": json.dumps(contacts)}
+
         # Geometry: from geosparql:hasGeometry or areaServed[*].geo.geosparql:asWKT
         wkt_val = extract_wkt(node)
         if wkt_val:
@@ -590,6 +623,17 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
             else:
                 # Don't send an empty string for a nested field
                 del project["additional_properties"]
+
+        # Contacts: parse JSON string (if present) into nested objects
+        if "contacts" in project:
+            contacts_value = project["contacts"]
+            if contacts_value:
+                try:
+                    project["contacts"] = json.loads(contacts_value)
+                except Exception:
+                    del project["contacts"]
+            else:
+                del project["contacts"]
 
         logging.info(f"Loading project {project.get('name', '')} ({i + 1}/{len(results['results']['bindings'])})")
 
