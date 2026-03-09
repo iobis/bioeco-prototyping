@@ -91,6 +91,13 @@ def ensure_indices(clear_indexes: bool = False):
                         "contact_type": {"type": "keyword"}
                     }
                 },
+                "services": {
+                    "type": "nested",
+                    "properties": {
+                        "name": {"type": "keyword"},
+                        "url": {"type": "keyword"}
+                    }
+                },
                 "geometry": {"type": "geo_shape"}
             }
         }
@@ -478,6 +485,63 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
             # Store as JSON string in the intermediate binding; converted to objects later.
             b["contacts"] = {"value": json.dumps(contacts)}
 
+        # Services: links to external data products / downloads.
+        services: list[dict] = []
+
+        # 1) hasPart DataDownload (or similar) with contentUrl/url
+        has_part = get_schema(node, "hasPart")
+        for part in as_list(has_part):
+            if not isinstance(part, dict):
+                continue
+            # If a type exists and is not a DataDownload, skip; otherwise be lenient
+            part_type = part.get("@type", "") or get_schema(part, "type")
+            if part_type and str(part_type) not in ("schema:DataDownload", "DataDownload"):
+                # still allow if contentUrl/url present, since user cares about links
+                pass
+            service_url = get_schema(part, "contentUrl") or get_schema(part, "url")
+            service_name = get_schema(part, "name")
+            url_str = str(service_url).strip() if service_url else ""
+            if not url_str:
+                continue
+            services.append(
+                {
+                    "name": str(service_name).strip() if service_name else "",
+                    "url": url_str,
+                }
+            )
+
+        # 2) makesOffer Offers: use Offer name + itemOffered.url
+        offers = as_list(get_schema(node, "makesOffer"))
+        for off in offers:
+            if not isinstance(off, dict):
+                continue
+            offer_name = get_schema(off, "name")
+            item = get_schema(off, "itemOffered")
+            if not isinstance(item, dict):
+                continue
+            item_url = get_schema(item, "url")
+            # item_url can be string or list
+            url_str = ""
+            if isinstance(item_url, list):
+                for u in item_url:
+                    s = str(u).strip()
+                    if s:
+                        url_str = s
+                        break
+            elif item_url:
+                url_str = str(item_url).strip()
+            if not url_str:
+                continue
+            services.append(
+                {
+                    "name": str(offer_name).strip() if offer_name else "",
+                    "url": url_str,
+                }
+            )
+
+        if services:
+            b["services"] = {"value": json.dumps(services)}
+
         # Geometry: from geosparql:hasGeometry or areaServed[*].geo.geosparql:asWKT
         wkt_val = extract_wkt(node)
         if wkt_val:
@@ -634,6 +698,17 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
                     del project["contacts"]
             else:
                 del project["contacts"]
+
+        # Services: parse JSON string into nested objects
+        if "services" in project:
+            services_value = project["services"]
+            if services_value:
+                try:
+                    project["services"] = json.loads(services_value)
+                except Exception:
+                    del project["services"]
+            else:
+                del project["services"]
 
         logging.info(f"Loading project {project.get('name', '')} ({i + 1}/{len(results['results']['bindings'])})")
 

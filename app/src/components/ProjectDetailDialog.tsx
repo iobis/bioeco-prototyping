@@ -9,6 +9,7 @@ export interface ProjectDetail {
   end_year?: number
   eovs?: Array<{ code?: string; name?: string; uri?: string }>
   contacts?: Array<{ name?: string; email?: string; url?: string; contact_type?: string }>
+  services?: Array<{ name?: string; url?: string }>
 }
 
 interface ProjectDetailDialogProps {
@@ -107,6 +108,23 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                         </li>
                       )
                     })}
+                  </ul>
+                </div>
+              ) : null}
+              {project.services?.length ? (
+                <div className="dialog-section">
+                  <span className="dialog-meta-label">Services</span>
+                  <ul className="dialog-eov-list">
+                    {project.services.map((s, i) => (
+                      <li key={i}>
+                        {s.name && <>{s.name}{s.url && ' – '}</>}
+                        {s.url && (
+                          <a href={s.url} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
+                            {s.url}
+                          </a>
+                        )}
+                      </li>
+                    ))}
                   </ul>
                 </div>
               ) : null}
