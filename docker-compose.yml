@@ -14,7 +14,7 @@ services:
     environment:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTIC_USER=elastic
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-FYiriTb4zH=+r0EJ877A}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - DATA_DIR=/app/data
       - CORS_ORIGINS=http://localhost,http://localhost:3000,http://localhost:5173
     depends_on:
@@ -32,10 +32,10 @@ services:
       - elasticsearch-data:/usr/share/elasticsearch/data
     environment:
       - discovery.type=single-node
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-FYiriTb4zH=+r0EJ877A}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - xpack.security.http.ssl.enabled=false
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD:-FYiriTb4zH=+r0EJ877A} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
       interval: 10s
       timeout: 5s
       retries: 15

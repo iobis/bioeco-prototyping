@@ -25,13 +25,8 @@ logging.getLogger("elastic_transport.transport").setLevel(logging.WARNING)
 # Path to data dir (repo root / data)
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
-# Path to exported JSON-LD graph
-GRAPH_PATH = Path("/Users/pieter/IPOfI Dropbox/Pieter Provoost/werk/projects/GOOS bioeco/bioeco-export/bioeco_graph.jsonld")
-
-
-# elastic
-
-client = create_es_client()
+# Elasticsearch client (initialised in main with configured endpoint)
+client = None
 
 
 def ensure_indices(clear_indexes: bool = False):
@@ -324,10 +319,17 @@ def load_graph(source: str):
     return graph
 
 
-def main(input_source: str | None, clear_indexes: bool = False, print_indexed_json: bool = False):
+def main(input_source: str | None, clear_indexes: bool = False, print_indexed_json: bool = False, es_url: str = ""):
+    global client
+    if not es_url:
+        raise SystemExit("You must provide an Elasticsearch endpoint via --es-url.")
+    client = create_es_client(es_url)
     ensure_indices(clear_indexes=clear_indexes)
 
-    source = input_source or str(GRAPH_PATH)
+    if not input_source:
+        raise SystemExit("You must provide --input pointing to a JSON/JSON-LD file or URL.")
+
+    source = input_source
     graph = load_graph(source)
 
     # Build project list and EOV list similar to previous SPARQL bindings
@@ -763,7 +765,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input",
         dest="input_source",
-        help=f"Path or URL to JSON-LD/JSON source; defaults to {GRAPH_PATH}",
+        help="Path or URL to JSON-LD/JSON source.",
+    )
+    parser.add_argument(
+        "--es-url",
+        dest="es_url",
+        required=True,
+        help="Elasticsearch endpoint URL (e.g. http://localhost:9200).",
     )
     parser.add_argument(
         "--clear-indexes",
@@ -776,5 +784,10 @@ if __name__ == "__main__":
         help="Print each indexed project document as formatted JSON to stdout.",
     )
     args = parser.parse_args()
-    main(args.input_source, clear_indexes=args.clear_indexes, print_indexed_json=args.print_indexed_json)
+    main(
+        args.input_source,
+        clear_indexes=args.clear_indexes,
+        print_indexed_json=args.print_indexed_json,
+        es_url=args.es_url,
+    )
 

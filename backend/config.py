@@ -6,7 +6,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", str(ROOT_DIR / "data")))
 
 ELASTICSEARCH_URL = os.environ.get("ELASTICSEARCH_URL", "http://localhost:9200")
 ELASTIC_USER = os.environ.get("ELASTIC_USER", "elastic")
-ELASTIC_PASSWORD = os.environ.get("ELASTIC_PASSWORD", "FYiriTb4zH=+r0EJ877A")
+ELASTIC_PASSWORD = os.environ.get("ELASTIC_PASSWORD")
 
 PROJECT_INDEX = os.environ.get("PROJECT_INDEX", "project")
 GRID_INDEX = os.environ.get("GRID_INDEX", "project_grid")

@@ -1,4 +1,5 @@
 from elasticsearch import Elasticsearch
+import os
 
 
 def create_mapping(client, index, mapping):
@@ -16,9 +17,9 @@ def create_mapping(client, index, mapping):
     )
 
 
-def create_es_client():
+def create_es_client(es_url: str) -> Elasticsearch:
     return Elasticsearch(
-        "http://localhost:9200",
-        basic_auth=("elastic", "FYiriTb4zH=+r0EJ877A"),
+        es_url,
+        basic_auth=("elastic", os.environ.get("ELASTIC_PASSWORD", "")),
         request_timeout=60,
     )
