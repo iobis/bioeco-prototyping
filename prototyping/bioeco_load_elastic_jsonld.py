@@ -430,9 +430,20 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
         if ap_pairs:
             b["additional_properties"] = {"value": "||".join(ap_pairs)}
 
-        # Funding: if there are categories/descriptions encoded, they would need to be parsed.
-        # For now we keep the simple structure used in the graph (MonetaryGrant without extra fields),
-        # so funding_categories / funding_descriptions are left empty.
+        # Funding: handle MonetaryGrant entries; use grant name as a simple description.
+        funding_entries = as_list(get_schema(node, "funding"))
+        funding_names: list[str] = []
+        for f in funding_entries:
+            if not isinstance(f, dict):
+                continue
+            if f.get("@type") != "MonetaryGrant":
+                continue
+            grant_name = get_schema(f, "name")
+            if grant_name:
+                funding_names.append(str(grant_name).strip())
+        if funding_names:
+            # Match the loader's convention: "||"‑separated string, later split into a list.
+            b["funding_descriptions"] = {"value": "||".join(funding_names)}
 
         # Geometry: from geosparql:hasGeometry or areaServed[*].geo.geosparql:asWKT
         wkt_val = extract_wkt(node)
