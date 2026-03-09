@@ -98,17 +98,17 @@ export function ProjectList({
         <input
           type="search"
           className="search-input"
-          placeholder="Search projects…"
+          placeholder="Search programmes…"
           value={searchQuery}
           onChange={(e) => onSearchQueryChange?.(e.target.value)}
-          aria-label="Search projects"
+          aria-label="Search programmes"
         />
       </div>
       {loading && <p className="list-message">Loading projects…</p>}
       {error && <p className="list-message list-error">Error: {error}</p>}
       {!loading && !error && (!data?.items?.length) && (
         <p className="list-message">
-          {debouncedSearchQuery ? `No projects found for “${debouncedSearchQuery}”.` : 'No projects found.'}
+          {debouncedSearchQuery ? `No programmes found for “${debouncedSearchQuery}”.` : 'No programmes found.'}
         </p>
       )}
       {!loading && !error && data?.items?.length ? (
