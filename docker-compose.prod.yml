@@ -25,7 +25,7 @@ services:
       - discovery.type=single-node
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - xpack.security.http.ssl.enabled=false
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - ES_JAVA_OPTS=-Xms3g -Xmx3g
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     healthcheck:
@@ -33,6 +33,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 15
+    ports:
+      - "9200:9200"
     networks:
       - bioeco
 
