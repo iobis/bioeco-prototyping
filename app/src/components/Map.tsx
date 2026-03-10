@@ -284,6 +284,7 @@ export function Map({
           data: geoJson,
         })
         const isAreaGeometry = geometry.type === 'Polygon' || geometry.type === 'MultiPolygon'
+        const isLineGeometry = geometry.type === 'LineString' || geometry.type === 'MultiLineString'
         if (isAreaGeometry) {
           map.addLayer(
             {
@@ -294,6 +295,19 @@ export function Map({
                 'fill-color': '#0284c7',
                 'fill-opacity': 0.35,
                 'fill-outline-color': '#0369a1',
+              },
+            },
+            'project-grid-labels'
+          )
+        } else if (isLineGeometry) {
+          map.addLayer(
+            {
+              id: HIGHLIGHT_LAYER_ID,
+              type: 'line',
+              source: HIGHLIGHT_SOURCE_ID,
+              paint: {
+                'line-color': '#81b4d0',
+                'line-width': 2,
               },
             },
             'project-grid-labels'
