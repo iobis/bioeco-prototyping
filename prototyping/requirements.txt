@@ -4,3 +4,4 @@ shapely
 h3
 polygon-geohasher
 geohash2
+python-dotenv

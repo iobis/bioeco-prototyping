@@ -13,6 +13,7 @@ from pathlib import Path
 import argparse
 import json
 
+from dotenv import load_dotenv
 from util import create_es_client
 
 
@@ -22,8 +23,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("elastic_transport.transport").setLevel(logging.WARNING)
 
-# Path to data dir (repo root / data)
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+# Path to repo root and data dir
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = REPO_ROOT / "data"
 
 # Elasticsearch client (initialised in main with configured endpoint)
 client = None
@@ -321,6 +323,10 @@ def load_graph(source: str):
 
 def main(input_source: str | None, clear_indexes: bool = False, print_indexed_json: bool = False, es_url: str = ""):
     global client
+
+    # Ensure variables like ELASTIC_PASSWORD are available when running locally.
+    load_dotenv(REPO_ROOT / ".env", override=False)
+
     if not es_url:
         raise SystemExit("You must provide an Elasticsearch endpoint via --es-url.")
     client = create_es_client(es_url)

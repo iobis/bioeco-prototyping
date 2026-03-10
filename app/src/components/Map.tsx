@@ -273,28 +273,48 @@ export function Map({
           return
         }
         removeHighlight()
+        const geometry = project.geometry as GeoJSON.Geometry
         const geoJson: GeoJSON.Feature = {
           type: 'Feature',
-          geometry: project.geometry,
+          geometry,
           properties: {},
         }
         map.addSource(HIGHLIGHT_SOURCE_ID, {
           type: 'geojson',
           data: geoJson,
         })
-        map.addLayer(
-          {
-            id: HIGHLIGHT_LAYER_ID,
-            type: 'fill',
-            source: HIGHLIGHT_SOURCE_ID,
-            paint: {
-              'fill-color': '#0284c7',
-              'fill-opacity': 0.35,
-              'fill-outline-color': '#0369a1',
+        const isAreaGeometry = geometry.type === 'Polygon' || geometry.type === 'MultiPolygon'
+        if (isAreaGeometry) {
+          map.addLayer(
+            {
+              id: HIGHLIGHT_LAYER_ID,
+              type: 'fill',
+              source: HIGHLIGHT_SOURCE_ID,
+              paint: {
+                'fill-color': '#0284c7',
+                'fill-opacity': 0.35,
+                'fill-outline-color': '#0369a1',
+              },
             },
-          },
-          'project-grid-labels'
-        )
+            'project-grid-labels'
+          )
+        } else {
+          map.addLayer(
+            {
+              id: HIGHLIGHT_LAYER_ID,
+              type: 'circle',
+              source: HIGHLIGHT_SOURCE_ID,
+              paint: {
+                'circle-radius': 5,
+                'circle-color': 'rgba(0,0,0,0)',
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#81b4d0',
+                'circle-stroke-opacity': 1,
+              },
+            },
+            'project-grid-labels'
+          )
+        }
       })
       .catch(() => removeHighlight())
 
@@ -308,6 +328,11 @@ export function Map({
     const eovCat = selectedEovCategories.length ? selectedEovCategories.join(',') : ''
     const tileKey = `${effectiveQuery}|${eovCat}`
     if (lastAppliedSearchRef.current === tileKey) return
+    // Avoid replacing the source on initial load when we have no filters – the style already has project-tiles.
+    if (tileKey === '|' && lastAppliedSearchRef.current === undefined) {
+      lastAppliedSearchRef.current = tileKey
+      return
+    }
     lastAppliedSearchRef.current = tileKey
 
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
