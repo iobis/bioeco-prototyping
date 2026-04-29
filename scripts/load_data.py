@@ -461,6 +461,27 @@ def remove_duplicate_polygon_vertices(geom):
     return geom, False
 
 
+def _antimeridian_fix_geojson_kwargs(geom) -> dict:
+    """
+    antimeridian.fix_geojson assumes typical parcels. Circumpolar polygons that
+    cross the dateline and enclose a pole need force_north_pole /
+    force_south_pole, or the default fix can invert the region.
+
+    Only apply those flags when the geometry actually needs antimeridian handling
+    (dateline crossing or lon outside [-180, 180]). High-latitude *local* boxes
+    (e.g. Svalbard-sized rectangles) never cross the dateline; forcing the north
+    pole incorrectly turns them into near-global polygons.
+    """
+    if not geometry_needs_antimeridian_split(geom):
+        return {}
+    _minx, miny, _maxx, maxy = geom.bounds
+    if maxy >= 75.0:
+        return {"force_north_pole": True, "fix_winding": False}
+    if miny <= -75.0:
+        return {"force_south_pole": True, "fix_winding": False}
+    return {}
+
+
 def normalize_geometry_for_indexing(geom):
     """
     Normalize geometry for ES geo_shape indexing:
@@ -474,11 +495,19 @@ def normalize_geometry_for_indexing(geom):
     if geom.geom_type in ("Polygon", "MultiPolygon") and antimeridian is not None:
         try:
             original_wkb = geom.wkb
-            fixed_geojson = antimeridian.fix_geojson(copy.deepcopy(mapping(geom)))
+            am_kwargs = _antimeridian_fix_geojson_kwargs(geom)
+            fixed_geojson = antimeridian.fix_geojson(
+                copy.deepcopy(mapping(geom)),
+                **am_kwargs,
+            )
             geom = shape(fixed_geojson)
             if geom.wkb != original_wkb:
                 changed = True
                 notes.append("antimeridian_fix_geojson")
+            if am_kwargs.get("force_north_pole"):
+                notes.append("antimeridian_force_north_pole")
+            elif am_kwargs.get("force_south_pole"):
+                notes.append("antimeridian_force_south_pole")
         except Exception:
             # Fall back to internal normalization below.
             pass
