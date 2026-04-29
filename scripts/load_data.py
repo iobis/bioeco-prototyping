@@ -1,7 +1,9 @@
 from elasticsearch import BadRequestError
 from elasticsearch.helpers import bulk
 from shapely import wkt, buffer, MultiPolygon
-from shapely.geometry import mapping
+from shapely.geometry import mapping, LineString, Polygon, shape
+from shapely.ops import split as split_geom, transform, unary_union
+from shapely.validation import make_valid
 import urllib3
 import logging
 from polygon_geohasher.polygon_geohasher import polygon_to_geohashes
@@ -11,9 +13,14 @@ from datetime import datetime
 from pathlib import Path
 import argparse
 import json
+import copy
 
 from dotenv import load_dotenv
 from util import create_es_client
+try:
+    import antimeridian
+except Exception:
+    antimeridian = None
 
 
 project_index = "project"
@@ -271,6 +278,247 @@ def as_list(value):
     return [value]
 
 
+def _shift_geom_longitude(geom, to_360: bool):
+    """Shift longitudes between [-180,180] and [0,360] domains."""
+    if to_360:
+        return transform(lambda x, y, z=None: (x + 360 if x < 0 else x, y), geom)
+    return transform(lambda x, y, z=None: (x - 360 if x > 180 else x, y), geom)
+
+
+def _canonicalize_lon(lon: float) -> float:
+    """Map longitude to [-180, 180], keeping 180 instead of -180 for boundary values."""
+    v = ((float(lon) + 180.0) % 360.0) - 180.0
+    if v == -180.0 and lon > 0:
+        return 180.0
+    return v
+
+
+def canonicalize_polygonal_longitudes(geom):
+    """
+    Canonicalize polygonal geometry longitudes to [-180, 180].
+    Returns (geometry, changed).
+    """
+    if geom.geom_type not in ("Polygon", "MultiPolygon"):
+        return geom, False
+    changed = False
+
+    def clean_ring(ring):
+        nonlocal changed
+        out = []
+        for c in ring:
+            lon = _canonicalize_lon(c[0])
+            if lon != c[0]:
+                changed = True
+            if len(c) > 2:
+                out.append((lon, c[1], c[2]))
+            else:
+                out.append((lon, c[1]))
+        return out
+
+    if geom.geom_type == "Polygon":
+        ext = clean_ring(list(geom.exterior.coords))
+        holes = [clean_ring(list(i.coords)) for i in geom.interiors]
+        return Polygon(ext, holes), changed
+
+    polys = []
+    for p in geom.geoms:
+        ext = clean_ring(list(p.exterior.coords))
+        holes = [clean_ring(list(i.coords)) for i in p.interiors]
+        polys.append(Polygon(ext, holes))
+    return MultiPolygon(polys), changed
+
+
+def _ring_crosses_antimeridian(coords) -> bool:
+    """Return True if any consecutive lon jump indicates dateline crossing."""
+    if not coords:
+        return False
+    for i in range(1, len(coords)):
+        prev_lon = float(coords[i - 1][0])
+        lon = float(coords[i][0])
+        if abs(lon - prev_lon) > 180:
+            return True
+    return False
+
+
+def geometry_crosses_antimeridian(geom) -> bool:
+    """Detect whether polygonal geometry truly crosses the dateline."""
+    if geom.geom_type == "Polygon":
+        if _ring_crosses_antimeridian(list(geom.exterior.coords)):
+            return True
+        for interior in geom.interiors:
+            if _ring_crosses_antimeridian(list(interior.coords)):
+                return True
+        return False
+    if geom.geom_type == "MultiPolygon":
+        return any(geometry_crosses_antimeridian(p) for p in geom.geoms)
+    return False
+
+
+def geometry_has_out_of_range_longitudes(geom) -> bool:
+    """True when polygonal geometry has lon outside [-180, 180]."""
+    if geom.geom_type == "Polygon":
+        for c in list(geom.exterior.coords):
+            if c[0] < -180 or c[0] > 180:
+                return True
+        for interior in geom.interiors:
+            for c in list(interior.coords):
+                if c[0] < -180 or c[0] > 180:
+                    return True
+        return False
+    if geom.geom_type == "MultiPolygon":
+        return any(geometry_has_out_of_range_longitudes(p) for p in geom.geoms)
+    return False
+
+
+def geometry_needs_antimeridian_split(geom) -> bool:
+    return geometry_crosses_antimeridian(geom) or geometry_has_out_of_range_longitudes(geom)
+
+
+def split_antimeridian_polygonal(geom):
+    """
+    Split Polygon/MultiPolygon geometries at the antimeridian and wrap longitudes
+    back to [-180, 180]. Returns (geometry, changed).
+    """
+    if geom.geom_type not in ("Polygon", "MultiPolygon"):
+        return geom, False
+    if not geometry_needs_antimeridian_split(geom):
+        return geom, False
+
+    try:
+        shifted = _shift_geom_longitude(geom, to_360=True)
+        parts = split_geom(shifted, LineString([(180, -90), (180, 90)]))
+        polygonal_parts = []
+        for g in parts.geoms:
+            if g.geom_type == "Polygon":
+                polygonal_parts.append(g)
+            elif g.geom_type == "MultiPolygon":
+                polygonal_parts.extend(list(g.geoms))
+
+        if not polygonal_parts:
+            return geom, False
+
+        wrapped = [_shift_geom_longitude(p, to_360=False) for p in polygonal_parts]
+        merged = unary_union(wrapped)
+        return merged, True
+    except Exception:
+        return geom, False
+
+
+def _dedupe_consecutive_coords(coords):
+    """Remove consecutive duplicate vertices from a ring coordinate sequence."""
+    deduped = []
+    prev = None
+    for c in coords:
+        t = tuple(c)
+        if prev is None or t != prev:
+            deduped.append(t)
+            prev = t
+    if deduped and deduped[0] != deduped[-1]:
+        deduped.append(deduped[0])
+    return deduped
+
+
+def remove_duplicate_polygon_vertices(geom):
+    """
+    Remove consecutive duplicate vertices from Polygon/MultiPolygon rings.
+    Returns (geometry, changed).
+    """
+    changed = False
+
+    def clean_polygon(poly: Polygon):
+        nonlocal changed
+        ext = _dedupe_consecutive_coords(list(poly.exterior.coords))
+        holes = []
+        for interior in poly.interiors:
+            ring = _dedupe_consecutive_coords(list(interior.coords))
+            if len(ring) >= 4:
+                holes.append(ring)
+            else:
+                changed = True
+        if len(ext) < 4:
+            changed = True
+            return None
+        if ext != list(poly.exterior.coords):
+            changed = True
+        try:
+            return Polygon(ext, holes)
+        except Exception:
+            changed = True
+            return None
+
+    if geom.geom_type == "Polygon":
+        p = clean_polygon(geom)
+        return (p if p is not None else geom), changed
+    if geom.geom_type == "MultiPolygon":
+        polys = []
+        for p in geom.geoms:
+            cp = clean_polygon(p)
+            if cp is not None and not cp.is_empty:
+                polys.append(cp)
+        if not polys:
+            return geom, changed
+        return MultiPolygon(polys), changed
+    return geom, False
+
+
+def normalize_geometry_for_indexing(geom):
+    """
+    Normalize geometry for ES geo_shape indexing:
+    - split polygonal geometries across antimeridian
+    - run make_valid if geometry is invalid
+    Returns (geometry, changed, notes)
+    """
+    notes = []
+    changed = False
+
+    if geom.geom_type in ("Polygon", "MultiPolygon") and antimeridian is not None:
+        try:
+            original_wkb = geom.wkb
+            fixed_geojson = antimeridian.fix_geojson(copy.deepcopy(mapping(geom)))
+            geom = shape(fixed_geojson)
+            if geom.wkb != original_wkb:
+                changed = True
+                notes.append("antimeridian_fix_geojson")
+        except Exception:
+            # Fall back to internal normalization below.
+            pass
+    else:
+        geom2, did_canonicalize = canonicalize_polygonal_longitudes(geom)
+        if did_canonicalize:
+            geom = geom2
+            changed = True
+            notes.append("canonicalized_longitudes")
+
+        geom2, did_split = split_antimeridian_polygonal(geom)
+        if did_split:
+            geom = geom2
+            changed = True
+            notes.append("split_antimeridian")
+
+    geom2, did_dedupe = remove_duplicate_polygon_vertices(geom)
+    if did_dedupe:
+        geom = geom2
+        changed = True
+        notes.append("dedupe_vertices")
+
+    if not geom.is_valid:
+        try:
+            geom_valid = make_valid(geom)
+            geom = geom_valid
+            changed = True
+            notes.append("make_valid")
+        except Exception:
+            pass
+
+    # Keep polygonal outputs as MultiPolygon for consistency where possible.
+    if geom.geom_type == "Polygon":
+        geom = MultiPolygon([geom])
+        changed = True
+        notes.append("polygon_to_multipolygon")
+
+    return geom, changed, notes
+
+
 def extract_wkt(node: dict) -> str | None:
     """
     Extract WKT geometry from either:
@@ -330,6 +578,7 @@ def load_graph(source_dir: str):
         raise SystemExit(f"No JSON files found in input directory: {path}")
 
     graph = []
+    source_file_by_id = {}
     for file_path in files:
         try:
             with open(file_path, encoding="utf-8") as f:
@@ -352,12 +601,17 @@ def load_graph(source_dir: str):
             logging.warning("Skipping file with invalid @graph/list payload in %s", file_path)
             continue
         graph.extend(nodes)
+        for node in nodes:
+            if isinstance(node, dict):
+                node_id = str(node.get("@id") or "").strip()
+                if node_id and node_id not in source_file_by_id:
+                    source_file_by_id[node_id] = file_path.name
 
     if not graph:
         raise SystemExit(f"No valid project nodes loaded from {path}")
 
     logging.info("Loaded %d nodes from %d JSON files in %s", len(graph), len(files), path)
-    return graph
+    return graph, source_file_by_id
 
 
 def main(input_source: str | None, clear_indexes: bool = False, print_indexed_json: bool = False, es_url: str = ""):
@@ -375,7 +629,7 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
         raise SystemExit("You must provide --input pointing to a directory of per-program JSON files.")
 
     source = input_source
-    graph = load_graph(source)
+    graph, source_file_by_id = load_graph(source)
 
     # Build project list and EOV list similar to previous SPARQL bindings
     results_bindings = []
@@ -644,6 +898,8 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
         "grid_docs_indexed": 0,
         "grid_index_errors": 0,
         "temporal_coverage_removed": 0,
+        "geometry_normalized": 0,
+        "not_indexed_files": set(),
     }
 
     for i, result in enumerate(results["results"]["bindings"]):
@@ -808,6 +1064,14 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
         cells = []
         if "geometry" in project:
             geometry = wkt.loads(project["geometry"])
+            geometry, geom_changed, geom_notes = normalize_geometry_for_indexing(geometry)
+            if geom_changed:
+                stats["geometry_normalized"] += 1
+                log_colored(
+                    "WARN",
+                    "GEOM_NORMALIZED",
+                    f"geometry normalized for '{project.get('name', '')}' ({project.get('id', '')}): {', '.join(geom_notes)}",
+                )
             geojson = mapping(geometry)
             project["geometry"] = geojson
             buff = buffer(geometry, 0.1)
@@ -829,10 +1093,12 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
             )
         except BadRequestError as e:
             stats["projects_not_indexed"] += 1
+            source_file = source_file_by_id.get(original_uri, "<unknown>")
+            stats["not_indexed_files"].add(source_file)
             log_colored(
                 "ERROR",
                 "NOT_INDEXED",
-                f"project failed to index: '{project.get('name', '')}' ({project.get('id', '')}) | reason: {e}",
+                f"project failed to index: '{project.get('name', '')}' ({project.get('id', '')}) from {source_file} | reason: {e}",
             )
 
         if indexed_ok and cells:
@@ -881,11 +1147,21 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
         log_colored("WARN", "SUMMARY", f"temporal_coverage_removed: {stats['temporal_coverage_removed']}")
     else:
         log_colored("OK", "SUMMARY", "temporal_coverage_removed: 0")
+    if stats["geometry_normalized"]:
+        log_colored("WARN", "SUMMARY", f"geometry_normalized: {stats['geometry_normalized']}")
+    else:
+        log_colored("OK", "SUMMARY", "geometry_normalized: 0")
     log_colored("OK", "SUMMARY", f"grid_docs_indexed: {stats['grid_docs_indexed']}")
     if stats["grid_index_errors"]:
         log_colored("ERROR", "SUMMARY", f"grid_index_errors: {stats['grid_index_errors']}")
     else:
         log_colored("OK", "SUMMARY", "grid_index_errors: 0")
+    if stats["not_indexed_files"]:
+        log_colored("ERROR", "SUMMARY", "files_not_indexed:")
+        for file_name in sorted(stats["not_indexed_files"]):
+            log_colored("ERROR", "SUMMARY_FILE", f"- {file_name}")
+    else:
+        log_colored("OK", "SUMMARY", "files_not_indexed: 0")
     log_colored("INFO", "SUMMARY", "----------------------------------------")
 
 
