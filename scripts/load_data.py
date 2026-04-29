@@ -3,7 +3,6 @@ from elasticsearch.helpers import bulk
 from shapely import wkt, buffer, MultiPolygon
 from shapely.geometry import mapping
 import urllib3
-import urllib.request
 import logging
 from polygon_geohasher.polygon_geohasher import polygon_to_geohashes
 import geohash
@@ -22,6 +21,27 @@ grid_index = "project_grid"
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("elastic_transport.transport").setLevel(logging.WARNING)
+
+# Colored log helpers for clear ingest diagnostics in terminal output.
+ANSI_RESET = "\033[0m"
+ANSI_RED = "\033[31m"
+ANSI_YELLOW = "\033[33m"
+ANSI_GREEN = "\033[32m"
+ANSI_CYAN = "\033[36m"
+
+
+def color_text(text: str, color: str) -> str:
+    return f"{color}{text}{ANSI_RESET}"
+
+
+def log_colored(level: str, label: str, message: str):
+    color = {
+        "INFO": ANSI_CYAN,
+        "OK": ANSI_GREEN,
+        "WARN": ANSI_YELLOW,
+        "ERROR": ANSI_RED,
+    }.get(level, ANSI_CYAN)
+    logging.info("%s %s", color_text(f"[{label}]", color), message)
 
 # Path to repo root and data dir
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -290,34 +310,53 @@ def extract_wkt(node: dict) -> str | None:
     return None
 
 
-def load_graph(source: str):
-    # Source can be a local path or a URL. Content can be:
-    # - JSON-LD with @graph
-    # - A list of project objects
-    # - A single project object
-    if source.startswith("http://") or source.startswith("https://"):
-        logging.info("Loading JSON-LD from URL %s", source)
-        with urllib.request.urlopen(source) as resp:
-            raw = resp.read()
-        data = json.loads(raw.decode("utf-8"))
-    else:
-        path = Path(source).expanduser()
-        if not path.exists():
-            raise SystemExit(f"JSON/JSON-LD source not found at {path}")
-        logging.info("Loading JSON-LD from file %s", path)
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
+def load_graph(source_dir: str):
+    """
+    Load project nodes from a directory containing one JSON file per program.
 
-    if isinstance(data, dict) and "@graph" in data:
-        graph = data.get("@graph", [])
-    elif isinstance(data, list):
-        graph = data
-    elif isinstance(data, dict):
-        graph = [data]
-    else:
-        raise SystemExit("Unsupported JSON/JSON-LD structure; expected @graph, list, or single object.")
+    Each file may contain:
+    - JSON-LD with @graph (preferred; usually a single node)
+    - A list of nodes
+    - A single node object
+    """
+    path = Path(source_dir).expanduser()
+    if not path.exists():
+        raise SystemExit(f"Input directory not found at {path}")
+    if not path.is_dir():
+        raise SystemExit(f"--input must be a directory containing JSON files, got: {path}")
 
-    logging.info("Loaded JSON-LD graph with %d nodes", len(graph))
+    files = sorted(path.glob("*.json"))
+    if not files:
+        raise SystemExit(f"No JSON files found in input directory: {path}")
+
+    graph = []
+    for file_path in files:
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            logging.warning("Skipping unreadable JSON file %s: %s", file_path, e)
+            continue
+
+        if isinstance(data, dict) and "@graph" in data:
+            nodes = data.get("@graph", [])
+        elif isinstance(data, list):
+            nodes = data
+        elif isinstance(data, dict):
+            nodes = [data]
+        else:
+            logging.warning("Skipping unsupported JSON structure in %s", file_path)
+            continue
+
+        if not isinstance(nodes, list):
+            logging.warning("Skipping file with invalid @graph/list payload in %s", file_path)
+            continue
+        graph.extend(nodes)
+
+    if not graph:
+        raise SystemExit(f"No valid project nodes loaded from {path}")
+
+    logging.info("Loaded %d nodes from %d JSON files in %s", len(graph), len(files), path)
     return graph
 
 
@@ -333,7 +372,7 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
     ensure_indices(clear_indexes=clear_indexes)
 
     if not input_source:
-        raise SystemExit("You must provide --input pointing to a JSON/JSON-LD file or URL.")
+        raise SystemExit("You must provide --input pointing to a directory of per-program JSON files.")
 
     source = input_source
     graph = load_graph(source)
@@ -598,6 +637,15 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
             eov_by_id[project_id].append({"uri": uri, "label": label, "code": code})
     logging.info("EOV lookup: %d projects with at least one EOV", len(eov_by_id))
 
+    stats = {
+        "projects_total": len(results["results"]["bindings"]),
+        "projects_indexed": 0,
+        "projects_not_indexed": 0,
+        "grid_docs_indexed": 0,
+        "grid_index_errors": 0,
+        "temporal_coverage_removed": 0,
+    }
+
     for i, result in enumerate(results["results"]["bindings"]):
         project = {k: v["value"] for k, v in result.items()}
 
@@ -646,6 +694,39 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
                     project.setdefault("end_year", dt.year)
             except (ValueError, TypeError) as e:
                 logging.warning(f"Could not parse temporal_coverage '{temporal}' for project {project.get('name', '')}: {e}")
+
+        # Elasticsearch mapping expects a single date for temporal_coverage.
+        # Drop interval values (e.g. start/end) or malformed values to avoid
+        # rejecting the whole project document.
+        if "temporal_coverage" in project:
+            temporal_value = str(project.get("temporal_coverage") or "").strip()
+            if "/" in temporal_value:
+                log_colored(
+                    "WARN",
+                    "REMOVED",
+                    f"temporal_coverage interval removed for project '{project.get('name', '')}' ({project.get('id', '')})",
+                )
+                stats["temporal_coverage_removed"] += 1
+                del project["temporal_coverage"]
+            elif temporal_value:
+                try:
+                    datetime.fromisoformat(temporal_value.replace("Z", "").strip())
+                except (ValueError, TypeError):
+                    log_colored(
+                        "WARN",
+                        "REMOVED",
+                        f"invalid temporal_coverage removed for project '{project.get('name', '')}' ({project.get('id', '')}): {temporal_value}",
+                    )
+                    stats["temporal_coverage_removed"] += 1
+                    del project["temporal_coverage"]
+            else:
+                log_colored(
+                    "WARN",
+                    "REMOVED",
+                    f"empty temporal_coverage removed for project '{project.get('name', '')}' ({project.get('id', '')})",
+                )
+                stats["temporal_coverage_removed"] += 1
+                del project["temporal_coverage"]
 
         # Keywords as a list
         if "keywords" in project:
@@ -736,12 +817,25 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
                 outer_geohashes_polygon = polygon_to_geohashes(poly, 4, False)
                 cells.extend(outer_geohashes_polygon)
 
+        indexed_ok = False
         try:
             client.index(index=project_index, id=project["id"], document=project)
+            indexed_ok = True
+            stats["projects_indexed"] += 1
+            log_colored(
+                "OK",
+                "INDEXED",
+                f"project indexed: '{project.get('name', '')}' ({project.get('id', '')})",
+            )
         except BadRequestError as e:
-            logging.error(e)
+            stats["projects_not_indexed"] += 1
+            log_colored(
+                "ERROR",
+                "NOT_INDEXED",
+                f"project failed to index: '{project.get('name', '')}' ({project.get('id', '')}) | reason: {e}",
+            )
 
-        if cells:
+        if indexed_ok and cells:
             cells = list(set(cells))
             actions = []
             for cell in list(set(cells)):
@@ -762,8 +856,37 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
                 actions.append(action)
             try:
                 bulk(client, actions, refresh="false")
+                stats["grid_docs_indexed"] += len(actions)
+                log_colored(
+                    "OK",
+                    "GRID",
+                    f"indexed {len(actions)} grid docs for '{project.get('name', '')}' ({project.get('id', '')})",
+                )
             except BadRequestError as e:
-                logging.error(e)
+                stats["grid_index_errors"] += 1
+                log_colored(
+                    "ERROR",
+                    "GRID_FAILED",
+                    f"grid indexing failed for '{project.get('name', '')}' ({project.get('id', '')}) | reason: {e}",
+                )
+
+    log_colored("INFO", "SUMMARY", "----------------------------------------")
+    log_colored("INFO", "SUMMARY", f"projects_total: {stats['projects_total']}")
+    log_colored("OK", "SUMMARY", f"projects_indexed: {stats['projects_indexed']}")
+    if stats["projects_not_indexed"]:
+        log_colored("ERROR", "SUMMARY", f"projects_not_indexed: {stats['projects_not_indexed']}")
+    else:
+        log_colored("OK", "SUMMARY", "projects_not_indexed: 0")
+    if stats["temporal_coverage_removed"]:
+        log_colored("WARN", "SUMMARY", f"temporal_coverage_removed: {stats['temporal_coverage_removed']}")
+    else:
+        log_colored("OK", "SUMMARY", "temporal_coverage_removed: 0")
+    log_colored("OK", "SUMMARY", f"grid_docs_indexed: {stats['grid_docs_indexed']}")
+    if stats["grid_index_errors"]:
+        log_colored("ERROR", "SUMMARY", f"grid_index_errors: {stats['grid_index_errors']}")
+    else:
+        log_colored("OK", "SUMMARY", "grid_index_errors: 0")
+    log_colored("INFO", "SUMMARY", "----------------------------------------")
 
 
 if __name__ == "__main__":
@@ -771,7 +894,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--input",
         dest="input_source",
-        help="Path or URL to JSON-LD/JSON source.",
+        help="Path to a folder containing one JSON file per program.",
     )
     parser.add_argument(
         "--es-url",
