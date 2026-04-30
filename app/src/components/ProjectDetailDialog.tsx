@@ -7,7 +7,7 @@ export interface ProjectDetail {
   url?: string
   start_year?: number
   end_year?: number
-  eovs?: Array<{ code?: string; name?: string; uri?: string }>
+  eovs?: Array<{ code?: string; label?: string; name?: string; uri?: string }>
   contacts?: Array<{ name?: string; email?: string; url?: string; contact_type?: string }>
   services?: Array<{ name?: string; url?: string }>
 }
