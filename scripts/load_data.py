@@ -482,6 +482,43 @@ def _antimeridian_fix_geojson_kwargs(geom) -> dict:
     return {}
 
 
+def _geometry_collection_polygonal_only(geom):
+    """
+    make_valid / antimeridian can yield GeometryCollection with polygonal area plus
+    MultiPoint or line debris. Drop non-surfaces so ES and the map see MultiPolygon.
+    """
+    if geom.geom_type != "GeometryCollection":
+        return geom, False
+    polys = []
+    stack = list(geom.geoms)
+    while stack:
+        g = stack.pop()
+        if g.geom_type == "Polygon":
+            polys.append(g)
+        elif g.geom_type == "MultiPolygon":
+            polys.extend(g.geoms)
+        elif g.geom_type == "GeometryCollection":
+            stack.extend(g.geoms)
+    if not polys:
+        return geom, False
+    merged = unary_union(polys)
+    if merged.is_empty:
+        return geom, False
+    if merged.geom_type == "GeometryCollection":
+        flat = []
+        for p in merged.geoms:
+            if p.geom_type == "Polygon":
+                flat.append(p)
+            elif p.geom_type == "MultiPolygon":
+                flat.extend(p.geoms)
+        if not flat:
+            return geom, False
+        merged = MultiPolygon(flat)
+    elif merged.geom_type == "Polygon":
+        merged = MultiPolygon([merged])
+    return merged, True
+
+
 def normalize_geometry_for_indexing(geom):
     """
     Normalize geometry for ES geo_shape indexing:
@@ -492,37 +529,38 @@ def normalize_geometry_for_indexing(geom):
     notes = []
     changed = False
 
-    if geom.geom_type in ("Polygon", "MultiPolygon") and antimeridian is not None:
-        try:
-            original_wkb = geom.wkb
-            am_kwargs = _antimeridian_fix_geojson_kwargs(geom)
-            fixed_geojson = antimeridian.fix_geojson(
-                copy.deepcopy(mapping(geom)),
-                **am_kwargs,
-            )
-            geom = shape(fixed_geojson)
-            if geom.wkb != original_wkb:
+    if geom.geom_type in ("Polygon", "MultiPolygon"):
+        if antimeridian is not None and geometry_needs_antimeridian_split(geom):
+            try:
+                original_wkb = geom.wkb
+                am_kwargs = _antimeridian_fix_geojson_kwargs(geom)
+                fixed_geojson = antimeridian.fix_geojson(
+                    copy.deepcopy(mapping(geom)),
+                    **am_kwargs,
+                )
+                geom = shape(fixed_geojson)
+                if geom.wkb != original_wkb:
+                    changed = True
+                    notes.append("antimeridian_fix_geojson")
+                if am_kwargs.get("force_north_pole"):
+                    notes.append("antimeridian_force_north_pole")
+                elif am_kwargs.get("force_south_pole"):
+                    notes.append("antimeridian_force_south_pole")
+            except Exception:
+                # Fall back to internal normalization below.
+                pass
+        else:
+            geom2, did_canonicalize = canonicalize_polygonal_longitudes(geom)
+            if did_canonicalize:
+                geom = geom2
                 changed = True
-                notes.append("antimeridian_fix_geojson")
-            if am_kwargs.get("force_north_pole"):
-                notes.append("antimeridian_force_north_pole")
-            elif am_kwargs.get("force_south_pole"):
-                notes.append("antimeridian_force_south_pole")
-        except Exception:
-            # Fall back to internal normalization below.
-            pass
-    else:
-        geom2, did_canonicalize = canonicalize_polygonal_longitudes(geom)
-        if did_canonicalize:
-            geom = geom2
-            changed = True
-            notes.append("canonicalized_longitudes")
+                notes.append("canonicalized_longitudes")
 
-        geom2, did_split = split_antimeridian_polygonal(geom)
-        if did_split:
-            geom = geom2
-            changed = True
-            notes.append("split_antimeridian")
+            geom2, did_split = split_antimeridian_polygonal(geom)
+            if did_split:
+                geom = geom2
+                changed = True
+                notes.append("split_antimeridian")
 
     geom2, did_dedupe = remove_duplicate_polygon_vertices(geom)
     if did_dedupe:
@@ -538,6 +576,12 @@ def normalize_geometry_for_indexing(geom):
             notes.append("make_valid")
         except Exception:
             pass
+
+    geom2, did_gc_poly = _geometry_collection_polygonal_only(geom)
+    if did_gc_poly:
+        geom = geom2
+        changed = True
+        notes.append("geometry_collection_polygonal_only")
 
     # Keep polygonal outputs as MultiPolygon for consistency where possible.
     if geom.geom_type == "Polygon":
