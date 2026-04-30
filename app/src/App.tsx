@@ -30,36 +30,38 @@ export default function App() {
 
   return (
     <div className="app">
-      <Map
-        hoveredProjectId={hoveredProjectId}
-        selectedCellBbox={selectedCellBbox}
-        onCellClick={setSelectedCellBbox}
-        selectedEovCategories={selectedEovCategories}
-        onEovCategoriesChange={setSelectedEovCategories}
-        eovVocabulary={eovVocabulary}
-      />
-      <aside className="panel">
-        <header className="panel-header">
-          <h1>GOOS BioEco Portal</h1>
-        </header>
-        <div className="panel-content">
-          <ProjectList
-            onHoverProject={setHoveredProjectId}
-            onSelectProject={setSelectedProjectId}
-            cellBbox={selectedCellBbox}
-            onClearCellFilter={() => setSelectedCellBbox(null)}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-            debouncedSearchQuery={debouncedSearchQuery}
-            eovCategories={selectedEovCategories}
-            eovVocabulary={eovVocabulary}
-          />
-        </div>
-      </aside>
-      <ProjectDetailDialog
-        projectId={selectedProjectId}
-        onClose={() => setSelectedProjectId(null)}
-      />
+      <header className="site-header">
+        <h1>GOOS BioEco Portal</h1>
+      </header>
+      <div className="app-main">
+        <Map
+          hoveredProjectId={hoveredProjectId}
+          selectedCellBbox={selectedCellBbox}
+          onCellClick={setSelectedCellBbox}
+          selectedEovCategories={selectedEovCategories}
+          onEovCategoriesChange={setSelectedEovCategories}
+          eovVocabulary={eovVocabulary}
+        />
+        <aside className="panel">
+          <div className="panel-content">
+            <ProjectList
+              onHoverProject={setHoveredProjectId}
+              onSelectProject={setSelectedProjectId}
+              cellBbox={selectedCellBbox}
+              onClearCellFilter={() => setSelectedCellBbox(null)}
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+              debouncedSearchQuery={debouncedSearchQuery}
+              eovCategories={selectedEovCategories}
+              eovVocabulary={eovVocabulary}
+            />
+          </div>
+        </aside>
+        <ProjectDetailDialog
+          projectId={selectedProjectId}
+          onClose={() => setSelectedProjectId(null)}
+        />
+      </div>
     </div>
   )
 }

@@ -1,7 +1,35 @@
 .app {
-  position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
+}
+
+.site-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+  z-index: 20;
+}
+
+.site-header h1 {
+  margin: 0;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.app-main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 .panel {
@@ -17,24 +45,6 @@
   display: flex;
   flex-direction: column;
   z-index: 10;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.panel-header h1 {
-  margin: 0;
-  font-family: "Space Mono", monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text);
 }
 
 .panel-cell-filter {
@@ -80,7 +90,7 @@
 
 .panel-search {
   flex-shrink: 0;
-  padding: 10px 14px 6px;
+  padding: 18px 14px 12px;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -111,7 +121,7 @@
 .panel-content {
   flex: 1;
   overflow: auto;
-  padding: 10px 14px;
+  padding: 0 14px 10px;
 }
 
 .panel-content::-webkit-scrollbar {
