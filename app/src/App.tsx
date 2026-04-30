@@ -6,6 +6,7 @@ import { ProjectDetailDialog } from './components/ProjectDetailDialog'
 import './App.css'
 
 const SEARCH_DEBOUNCE_MS = 300
+const IOC_LOGO_SRC = `${import.meta.env.BASE_URL}ioc_logo.svg`
 
 export default function App() {
   const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null)
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="site-header">
+        <img src={IOC_LOGO_SRC} alt="IOC logo" className="site-header-logo" />
         <h1>GOOS BioEco Portal</h1>
       </header>
       <div className="app-main">

@@ -52,6 +52,7 @@ services:
     volumes:
       # Mount source and config for autoreload; node_modules stay from image
       - ./app/src:/app/src
+      - ./app/public:/app/public
       - ./app/index.html:/app/index.html
       - ./app/vite.config.ts:/app/vite.config.ts
       - ./app/package.json:/app/package.json

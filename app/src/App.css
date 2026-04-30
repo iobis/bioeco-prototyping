@@ -9,17 +9,24 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 18px 16px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
   z-index: 20;
 }
 
+.site-header-logo {
+  height: 32px;
+  width: auto;
+  flex-shrink: 0;
+}
+
 .site-header h1 {
   margin: 0;
   font-family: "Space Mono", monospace;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
