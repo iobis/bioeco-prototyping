@@ -89,10 +89,12 @@ export function ProjectList({
     <>
       {cellBbox && onClearCellFilter && (
         <div className="panel-cell-filter">
-          <span className="panel-cell-filter-label">Map cell filter active</span>
-          <button type="button" className="panel-cell-filter-clear" onClick={onClearCellFilter}>
-            Clear
-          </button>
+          <div className="panel-cell-filter-inside">
+            <span className="panel-cell-filter-label">Map cell filter active</span>
+            <button type="button" className="panel-cell-filter-clear" onClick={onClearCellFilter}>
+              Clear
+            </button>
+          </div>
         </div>
       )}
       <div className="panel-search">

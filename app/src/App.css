@@ -39,33 +39,43 @@
 
 .panel-cell-filter {
   flex-shrink: 0;
+  padding: 10px 14px 6px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.panel-cell-filter-inside {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   padding: 8px 14px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  background: #fef3c7;
   font-size: 12px;
+  border-radius: 6px;
 }
 
 .panel-cell-filter-label {
-  color: var(--muted);
+  color: #854d0e;
+  font-weight: 600;
 }
 
 .panel-cell-filter-clear {
-  background: none;
-  border: none;
-  padding: 2px 6px;
+  background: transparent;
+  border: 0px;
+  padding: 5px 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--accent);
+  color: #78350f;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 .panel-cell-filter-clear:hover {
-  text-decoration: underline;
+  background: #fcd34d;
 }
 
 .panel-search {
