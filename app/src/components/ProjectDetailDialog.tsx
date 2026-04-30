@@ -74,7 +74,7 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                   <span className="dialog-meta-label">EOVs</span>
                   <ul className="dialog-eov-list">
                     {project.eovs.map((eov, i) => (
-                      <li key={i}>{eov.name ?? eov.code ?? eov.uri ?? '—'}</li>
+                      <li key={i}>{eov.label ?? eov.code ?? eov.uri ?? '—'}</li>
                     ))}
                   </ul>
                 </div>
@@ -86,7 +86,6 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                     {project.contacts.map((c, i) => {
                       const parts: string[] = []
                       if (c.name) parts.push(c.name)
-                      // if (c.contact_type) parts.push(c.contact_type)
                       return (
                         <li key={i}>
                           {parts.join(' – ')}
