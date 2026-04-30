@@ -40,7 +40,6 @@ interface MapProps {
   hoveredProjectId?: string | null
   selectedCellBbox?: string | null
   onCellClick?: (bbox: string | null) => void
-  searchQuery?: string
   selectedEovCategories?: string[]
   onEovCategoriesChange?: (keys: string[]) => void
   eovVocabulary?: EovVocabulary | null
@@ -50,7 +49,6 @@ export function Map({
   hoveredProjectId = null,
   selectedCellBbox = null,
   onCellClick,
-  searchQuery = '',
   selectedEovCategories = [],
   onEovCategoriesChange,
   eovVocabulary = null,
@@ -338,12 +336,11 @@ export function Map({
   useEffect(() => {
     const map = mapRef.current
     if (!map || !map.getStyle() || !mapLoadedRef.current) return
-    const effectiveQuery = searchQuery.trim().length >= 2 ? searchQuery.trim() : ''
     const eovCat = selectedEovCategories.length ? selectedEovCategories.join(',') : ''
-    const tileKey = `${effectiveQuery}|${eovCat}`
+    const tileKey = eovCat
     if (lastAppliedSearchRef.current === tileKey) return
-    // Avoid replacing the source on initial load when we have no filters – the style already has project-tiles.
-    if (tileKey === '|' && lastAppliedSearchRef.current === undefined) {
+    // Avoid replacing the source on initial load when we have no EOV filters – the style already has project-tiles.
+    if (!tileKey && lastAppliedSearchRef.current === undefined) {
       lastAppliedSearchRef.current = tileKey
       return
     }
@@ -351,7 +348,6 @@ export function Map({
 
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
     const params = new URLSearchParams()
-    if (effectiveQuery) params.set('name', effectiveQuery)
     if (eovCat) params.set('eov_category', eovCat)
     const queryString = params.toString()
     const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryString ? `?${queryString}` : ''}`
@@ -411,7 +407,7 @@ export function Map({
       },
       beforeId
     )
-  }, [searchQuery, selectedEovCategories, mapReady])
+  }, [selectedEovCategories, mapReady])
 
   useEffect(() => {
     const map = mapRef.current

@@ -34,7 +34,6 @@ export default function App() {
         hoveredProjectId={hoveredProjectId}
         selectedCellBbox={selectedCellBbox}
         onCellClick={setSelectedCellBbox}
-        searchQuery={debouncedSearchQuery}
         selectedEovCategories={selectedEovCategories}
         onEovCategoriesChange={setSelectedEovCategories}
         eovVocabulary={eovVocabulary}
