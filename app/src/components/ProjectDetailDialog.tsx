@@ -18,6 +18,7 @@ interface ProjectDetailDialogProps {
 }
 
 export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogProps) {
+  const projectApiUrl = projectId ? `/api/projects/${projectId}?include_geometry=false` : null
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,7 +31,7 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
     }
     setLoading(true)
     setError(null)
-    fetch(`/api/projects/${projectId}`)
+    fetch(`/api/projects/${projectId}?include_geometry=false`)
       .then((r) => {
         if (!r.ok) throw new Error(r.status === 404 ? 'Project not found' : r.statusText)
         return r.json()
@@ -133,14 +134,14 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                   <a href={project.url} target="_blank" rel="noopener noreferrer" className="dialog-link">
                     Open project link
                   </a>
-                  <a href={`/api/projects/${projectId}`} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
+                  <a href={projectApiUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
                     View raw API
                   </a>
                 </p>
               )}
               {!project.url && (
                 <p className="dialog-actions">
-                  <a href={`/api/projects/${projectId}`} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
+                  <a href={projectApiUrl ?? '#'} target="_blank" rel="noopener noreferrer" className="dialog-link dialog-link-muted">
                     View raw API
                   </a>
                 </p>

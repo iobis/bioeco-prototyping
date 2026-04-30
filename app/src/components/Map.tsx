@@ -263,7 +263,7 @@ export function Map({
     }
 
     const idForFetch = hoveredProjectId
-    fetch(`/api/projects/${hoveredProjectId}`)
+    fetch(`/api/projects/${hoveredProjectId}?include_geometry=true`)
       .then((r) => (r.ok ? r.json() : null))
       .then((project) => {
         if (!mapRef.current || !project?.geometry || hoveredIdRef.current !== idForFetch) {

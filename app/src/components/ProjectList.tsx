@@ -71,6 +71,7 @@ export function ProjectList({
   useEffect(() => {
     setLoading(true)
     const params = new URLSearchParams({ size: '100' })
+    params.set('include_geometry', 'false')
     if (debouncedSearchQuery) params.set('name', debouncedSearchQuery)
     if (cellBbox?.trim()) params.set('bbox', cellBbox.trim())
     if (eovCategories.length) params.set('eov_category', eovCategories.join(','))
