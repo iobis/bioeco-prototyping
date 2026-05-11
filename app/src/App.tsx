@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { EovVocabulary } from './eovVocabulary'
 import { Map } from './components/Map'
 import { ProjectList } from './components/ProjectList'
+import { AboutOverlay } from './components/AboutOverlay'
 import { ProjectDetailDialog } from './components/ProjectDetailDialog'
 import './App.css'
 
@@ -16,6 +17,7 @@ export default function App() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [selectedEovCategories, setSelectedEovCategories] = useState<string[]>([])
   const [eovVocabulary, setEovVocabulary] = useState<EovVocabulary | null>(null)
+  const [aboutOpen, setAboutOpen] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), SEARCH_DEBOUNCE_MS)
@@ -34,6 +36,11 @@ export default function App() {
       <header className="site-header">
         <img src={IOC_LOGO_SRC} alt="IOC logo" className="site-header-logo" />
         <h1>GOOS BioEco Portal</h1>
+        <nav className="site-header-nav" aria-label="Site">
+          <button type="button" className="site-header-link" onClick={() => setAboutOpen(true)}>
+            About
+          </button>
+        </nav>
       </header>
       <div className="app-main">
         <Map
@@ -64,6 +71,7 @@ export default function App() {
           onClose={() => setSelectedProjectId(null)}
         />
       </div>
+      <AboutOverlay open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </div>
   )
 }
