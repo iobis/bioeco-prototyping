@@ -20,6 +20,18 @@ services:
     depends_on:
       elasticsearch:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
     networks:
       - bioeco
 
@@ -68,7 +80,8 @@ services:
       - CHOKIDAR_INTERVAL=100
       - WATCHPACK_POLLING=true
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - bioeco
 
@@ -80,8 +93,10 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - frontend
-      - api
+      frontend:
+        condition: service_started
+      api:
+        condition: service_healthy
     networks:
       - bioeco
 
