@@ -8,6 +8,7 @@ import './App.css'
 
 const SEARCH_DEBOUNCE_MS = 300
 const IOC_LOGO_SRC = `${import.meta.env.BASE_URL}ioc_logo.svg`
+const GOOS_LOGO_SRC = `${import.meta.env.BASE_URL}goos_logo.png`
 
 export default function App() {
   const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null)
@@ -34,8 +35,9 @@ export default function App() {
   return (
     <div className="app">
       <header className="site-header">
-        <img src={IOC_LOGO_SRC} alt="IOC logo" className="site-header-logo" />
-        <h1>GOOS BioEco Portal</h1>
+      <img src={IOC_LOGO_SRC} alt="IOC logo" className="site-header-logo" />
+      <img src={GOOS_LOGO_SRC} alt="GOOS logo" className="site-header-logo" />
+      <h1>GOOS BioEco Portal</h1>
         <nav className="site-header-nav" aria-label="Site">
           <button type="button" className="site-header-link" onClick={() => setAboutOpen(true)}>
             About

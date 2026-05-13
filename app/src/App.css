@@ -24,7 +24,7 @@
 }
 
 .site-header h1 {
-  margin: 0;
+  margin: 0 0 0 10px;
   font-family: "DM Sans", system-ui, -apple-system, sans-serif;
   font-size: 1.25rem;
   font-weight: 600;
