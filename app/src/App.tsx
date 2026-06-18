@@ -39,6 +39,12 @@ export default function App() {
       <img src={GOOS_LOGO_SRC} alt="GOOS logo" className="site-header-logo" />
       <h1>GOOS BioEco Portal</h1>
         <nav className="site-header-nav" aria-label="Site">
+          <a href="https://eovmetadata.obis.org/home" target="_blank" rel="noopener noreferrer" className="site-header-submit-btn">
+            Submit or update an entry
+          </a>
+          <a href="https://github.com/iobis/bioeco-prototyping/issues/new" target="_blank" rel="noopener noreferrer" className="site-header-submit-btn">
+            Send Feedback
+          </a>
           <button type="button" className="site-header-link" onClick={() => setAboutOpen(true)}>
             About
           </button>
