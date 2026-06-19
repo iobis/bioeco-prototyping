@@ -632,6 +632,7 @@ def extract_wkt(node: dict) -> str | None:
     Extract WKT geometry from either:
     - geosparql:hasGeometry/geosparql:asWKT
     - areaServed[*].schema:geo.geosparql:asWKT (or bare geo)
+    - areaServed[*].geosparql:hasGeometry/geosparql:asWKT (EOV metadata app export)
     """
     geom = node.get("geosparql:hasGeometry")
     if isinstance(geom, dict):
@@ -644,11 +645,15 @@ def extract_wkt(node: dict) -> str | None:
         if not isinstance(place, dict):
             continue
         geo = place.get("geo") or place.get("schema:geo")
-        if not isinstance(geo, dict):
-            continue
-        wkt_val = extract_wkt_value(geo.get("geosparql:asWKT"))
-        if wkt_val:
-            return wkt_val
+        if isinstance(geo, dict):
+            wkt_val = extract_wkt_value(geo.get("geosparql:asWKT"))
+            if wkt_val:
+                return wkt_val
+        place_geom = place.get("geosparql:hasGeometry")
+        if isinstance(place_geom, dict):
+            wkt_val = extract_wkt_value(place_geom.get("geosparql:asWKT"))
+            if wkt_val:
+                return wkt_val
 
     return None
 
