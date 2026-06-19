@@ -120,7 +120,9 @@ export function AboutOverlay({ open, onClose }: AboutOverlayProps) {
             <a href="https://eovmetadata.obis.org/" target="_blank" rel="noopener noreferrer">
               BioEco Portal metadata App
             </a>
-            .
+            . This App requires a GitHub account to use. Once logged in, users can create and edit metadata
+            entries for their observing programmes. You may need to request edit permissions. Please contact
+            us (helpdesk@obis.org) if you require any assistance.
           </p>
           <p>
             Newly contributed programmes and updated programme metadata will automatically be
