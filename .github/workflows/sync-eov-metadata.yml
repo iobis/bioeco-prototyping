@@ -1,0 +1,36 @@
+name: Sync EOV metadata to Elasticsearch
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout portal repo
+        uses: actions/checkout@v4
+
+      - name: Fetch EOV metadata export
+        env:
+          EOV_METADATA_REPO: ${{ vars.EOV_METADATA_REPO }}
+        run: |
+          repo="${EOV_METADATA_REPO:-https://github.com/iobis/eov-metadata-app-front-entries.git}"
+          rm -rf /tmp/eov-metadata-export
+          git clone --depth 1 "$repo" /tmp/eov-metadata-export
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install loader dependencies
+        run: pip install --no-cache-dir -r scripts/requirements.txt
+
+      - name: Load programmes into Elasticsearch
+        env:
+          ELASTIC_PASSWORD: ${{ secrets.ELASTIC_PASSWORD }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+        run: |
+          python scripts/load_eov_metadata_data.py \
+            --input /tmp/eov-metadata-export/jsonFiles \
+            --es-url "${ELASTICSEARCH_URL:-http://localhost:9200}"
