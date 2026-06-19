@@ -1,6 +1,6 @@
 elasticsearch>=8.0.0,<10.0.0
 shapely>=2.0.0
-polygon-geohasher>=0.2.0
+polygon-geohasher>=0.0.2
 geohash2>=1.1
 python-dotenv>=1.0.0
 antimeridian>=0.4.0
