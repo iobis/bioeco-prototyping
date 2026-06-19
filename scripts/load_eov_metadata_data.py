@@ -392,6 +392,7 @@ def main(
     clear_indexes: bool = False,
     print_indexed_json: bool = False,
     es_url: str = "",
+    prune_stale: bool = True,
 ):
     load_dotenv(REPO_ROOT / ".env", override=False)
     issue_logger = ImportIssueLogger()
@@ -415,6 +416,7 @@ def main(
         source_file_by_id,
         print_indexed_json=print_indexed_json,
         issue_logger=issue_logger,
+        prune_stale=prune_stale,
     )
     log_index_summary(stats)
     issue_logger.summary()
@@ -446,10 +448,16 @@ if __name__ == "__main__":
         action="store_true",
         help="Print each indexed project document as formatted JSON to stdout.",
     )
+    parser.add_argument(
+        "--no-prune-stale",
+        action="store_true",
+        help="Keep project/grid documents that are absent from this load (default: remove them).",
+    )
     args = parser.parse_args()
     main(
         args.input_source,
         clear_indexes=args.clear_indexes,
         print_indexed_json=args.print_indexed_json,
         es_url=args.es_url,
+        prune_stale=not args.no_prune_stale,
     )

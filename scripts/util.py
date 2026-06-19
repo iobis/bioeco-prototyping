@@ -1,7 +1,7 @@
 """Shared utilities for BioEco Elasticsearch data loaders."""
 from __future__ import annotations
 
-from elasticsearch import BadRequestError
+from elasticsearch import BadRequestError, NotFoundError
 from elasticsearch.helpers import bulk
 from shapely import wkt, buffer, MultiPolygon
 from shapely.geometry import mapping, LineString, Polygon, shape
@@ -678,6 +678,93 @@ def build_eov_by_id(eov_bindings):
     return eov_by_id
 
 
+def grid_doc_id(project_id: str, cell: str) -> str:
+    """Stable Elasticsearch _id for a project geohash grid cell."""
+    return f"{project_id}_{cell}"
+
+
+def delete_grid_docs_for_project(client, project_id: str) -> int:
+    """Remove all grid cells for a project. Returns deleted document count."""
+    try:
+        resp = client.delete_by_query(
+            index=grid_index,
+            query={"term": {"id": project_id}},
+            refresh=False,
+            conflicts="proceed",
+        )
+        return int(resp.get("deleted") or 0)
+    except NotFoundError:
+        return 0
+
+
+def _list_indexed_project_ids(client) -> set[str]:
+    """Return all document _ids in the project index."""
+    ids: set[str] = set()
+    try:
+        resp = client.search(
+            index=project_index,
+            query={"match_all": {}},
+            _source=False,
+            size=10000,
+            stored_fields=[],
+        )
+    except NotFoundError:
+        return ids
+    for hit in resp["hits"]["hits"]:
+        ids.add(hit["_id"])
+    total = resp["hits"]["total"]["value"]
+    if total > len(ids):
+        logging.warning(
+            "Project index has %d documents but only %d were scanned for stale prune; "
+            "increase scroll/search size if needed.",
+            total,
+            len(ids),
+        )
+    return ids
+
+
+def prune_stale_projects(client, active_project_ids: set[str]) -> dict:
+    """
+    Remove project and grid documents whose ids are not in the current load set.
+    Safe to call after a full export ingest without clearing indices first.
+    """
+    stats = {"projects_removed": 0, "grid_docs_removed": 0}
+    if not active_project_ids:
+        log_colored("WARN", "PRUNE", "skipped stale prune: no successfully indexed project ids")
+        return stats
+
+    stale_ids = _list_indexed_project_ids(client) - active_project_ids
+    if not stale_ids:
+        log_colored("OK", "PRUNE", "no stale projects to remove")
+        return stats
+
+    for project_id in sorted(stale_ids):
+        try:
+            client.delete(index=project_index, id=project_id)
+            stats["projects_removed"] += 1
+        except NotFoundError:
+            pass
+
+    try:
+        resp = client.delete_by_query(
+            index=grid_index,
+            query={"terms": {"id": list(stale_ids)}},
+            refresh=False,
+            conflicts="proceed",
+        )
+        stats["grid_docs_removed"] = int(resp.get("deleted") or 0)
+    except NotFoundError:
+        pass
+
+    log_colored(
+        "OK",
+        "PRUNE",
+        f"removed {stats['projects_removed']} stale project(s) and "
+        f"{stats['grid_docs_removed']} stale grid cell(s)",
+    )
+    return stats
+
+
 def index_project_bindings(
     client,
     results_bindings,
@@ -686,6 +773,7 @@ def index_project_bindings(
     *,
     print_indexed_json: bool = False,
     issue_logger: "ImportIssueLogger | None" = None,
+    prune_stale: bool = True,
 ) -> dict:
     results = {"results": {"bindings": results_bindings}}
     stats = {
@@ -693,11 +781,14 @@ def index_project_bindings(
         "projects_indexed": 0,
         "projects_not_indexed": 0,
         "grid_docs_indexed": 0,
+        "grid_docs_removed": 0,
         "grid_index_errors": 0,
+        "projects_removed": 0,
         "temporal_coverage_removed": 0,
         "geometry_normalized": 0,
         "not_indexed_files": set(),
     }
+    active_project_ids: set[str] = set()
     for i, result in enumerate(results["results"]["bindings"]):
         project = {k: v["value"] for k, v in result.items()}
 
@@ -882,6 +973,7 @@ def index_project_bindings(
             client.index(index=project_index, id=project["id"], document=project)
             indexed_ok = True
             stats["projects_indexed"] += 1
+            active_project_ids.add(project["id"])
             log_colored(
                 "OK",
                 "INDEXED",
@@ -897,40 +989,52 @@ def index_project_bindings(
                 f"project failed to index: '{project.get('name', '')}' ({project.get('id', '')}) from {source_file} | reason: {e}",
             )
 
-        if indexed_ok and cells:
-            cells = list(set(cells))
-            actions = []
-            for cell in list(set(cells)):
-                lat, lon = geohash.decode(cell)
-                doc = {
-                    "id": project["id"],
-                    "project": project["name"],
-                    "eov_codes": project.get("eov_codes") or [],
-                    "eov_keywords": project.get("eov_keywords") or [],
-                    "start_year": project.get("start_year"),
-                    "end_year": project.get("end_year"),
-                    "geometry": (lon, lat),
-                }
-                action = {
-                    "_index": grid_index,
-                    "_source": doc,
-                }
-                actions.append(action)
-            try:
-                bulk(client, actions, refresh="false")
-                stats["grid_docs_indexed"] += len(actions)
-                log_colored(
-                    "OK",
-                    "GRID",
-                    f"indexed {len(actions)} grid docs for '{project.get('name', '')}' ({project.get('id', '')})",
-                )
-            except BadRequestError as e:
-                stats["grid_index_errors"] += 1
-                log_colored(
-                    "ERROR",
-                    "GRID_FAILED",
-                    f"grid indexing failed for '{project.get('name', '')}' ({project.get('id', '')}) | reason: {e}",
-                )
+        if indexed_ok:
+            removed = delete_grid_docs_for_project(client, project["id"])
+            if removed:
+                stats["grid_docs_removed"] += removed
+
+            if cells:
+                cells = list(set(cells))
+                actions = []
+                for cell in cells:
+                    lat, lon = geohash.decode(cell)
+                    doc = {
+                        "id": project["id"],
+                        "project": project["name"],
+                        "eov_codes": project.get("eov_codes") or [],
+                        "eov_keywords": project.get("eov_keywords") or [],
+                        "start_year": project.get("start_year"),
+                        "end_year": project.get("end_year"),
+                        "geometry": (lon, lat),
+                    }
+                    actions.append(
+                        {
+                            "_index": grid_index,
+                            "_id": grid_doc_id(project["id"], cell),
+                            "_source": doc,
+                        }
+                    )
+                try:
+                    bulk(client, actions, refresh="false")
+                    stats["grid_docs_indexed"] += len(actions)
+                    log_colored(
+                        "OK",
+                        "GRID",
+                        f"indexed {len(actions)} grid docs for '{project.get('name', '')}' ({project.get('id', '')})",
+                    )
+                except BadRequestError as e:
+                    stats["grid_index_errors"] += 1
+                    log_colored(
+                        "ERROR",
+                        "GRID_FAILED",
+                        f"grid indexing failed for '{project.get('name', '')}' ({project.get('id', '')}) | reason: {e}",
+                    )
+
+    if prune_stale:
+        prune_stats = prune_stale_projects(client, active_project_ids)
+        stats["projects_removed"] = prune_stats["projects_removed"]
+        stats["grid_docs_removed"] += prune_stats["grid_docs_removed"]
 
     return stats
 
@@ -952,6 +1056,10 @@ def log_index_summary(stats: dict) -> None:
     else:
         log_colored("OK", "SUMMARY", "geometry_normalized: 0")
     log_colored("OK", "SUMMARY", f"grid_docs_indexed: {stats['grid_docs_indexed']}")
+    if stats.get("grid_docs_removed"):
+        log_colored("INFO", "SUMMARY", f"grid_docs_removed: {stats['grid_docs_removed']}")
+    if stats.get("projects_removed"):
+        log_colored("INFO", "SUMMARY", f"projects_removed: {stats['projects_removed']}")
     if stats["grid_index_errors"]:
         log_colored("ERROR", "SUMMARY", f"grid_index_errors: {stats['grid_index_errors']}")
     else:
