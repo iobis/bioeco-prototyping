@@ -65,7 +65,10 @@
       "code": "macroalgae",
       "label": "Macroalgal canopy cover and composition",
       "badge": { "bg": "#65a30d", "fg": "#fff" },
-      "alt_uris": ["https://goosocean.org/document/17515"]
+      "alt_uris": [
+        "https://goosocean.org/document/17515",
+        "https://goosocean.org/eov/macroalgae"
+      ]
     },
     {
       "url": "https://goosocean.org/eov/mangrove",
@@ -86,7 +89,10 @@
       "code": "invert",
       "label": "Benthic invertebrate abundance and distribution",
       "badge": { "bg": "#F45B69", "fg": "#fff" },
-      "alt_uris": ["https://goosocean.org/document/36269"]
+      "alt_uris": [
+        "https://goosocean.org/document/36269",
+        "https://goosocean.org/eov/invertebrates"
+      ]
     }
   ],
   "subvariables": [

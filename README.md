@@ -2,7 +2,12 @@
 
 ### Loading data into Elasticsearch
 
-The `scripts/load_data.py` script ingests a JSON/JSON-LD export of the project graph into the `project` and `project_grid` indices in Elasticsearch.
+Two loaders share `scripts/util.py` (indices, EOV vocabulary, geometry normalization, indexing):
+
+- **`scripts/load_data.py`** — flat directory of per-program JSON/JSON-LD files (legacy graph export).
+- **`scripts/load_eov_metadata_data.py`** — EOV metadata app export under `data/eov-metadata-app-front-entries/jsonFiles/` (one subdirectory per programme). Logs structured import issues (missing geometry, unknown EOV URLs, invalid JSON, etc.).
+
+Both write to the `project` and `project_grid` indices in Elasticsearch.
 
 - **Prerequisites**
   - Elasticsearch running and reachable.
@@ -13,6 +18,13 @@ The `scripts/load_data.py` script ingests a JSON/JSON-LD export of the project g
 ```bash
 python scripts/load_data.py \
   --input /path/to/bioeco_graph.jsonld \
+  --es-url http://localhost:9200
+```
+
+**EOV metadata app export** (default input path is `data/eov-metadata-app-front-entries/jsonFiles`):
+
+```bash
+python scripts/load_eov_metadata_data.py \
   --es-url http://localhost:9200
 ```
 
