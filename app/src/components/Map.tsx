@@ -15,6 +15,43 @@ const PROJECT_GRID_LAYER_ID = 'project-grid'
 /** Highest zoom with OBIS land/coastline vector tiles (https://tiles.obis.org). */
 const BASEMAP_MAX_ZOOM = 12
 
+/** Map land/ocean fill; grid cells are drawn over this at GRID_FILL_OPACITY. */
+const MAP_SURFACE = '#f8fafc'
+const GRID_FILL_OPACITY = 0.4
+
+/** Scientific Colour Maps Hawaii (sampled) for programmes-per-cell (0 → 20+). */
+const GRID_COLORS = ['#8c0862', '#c2456e', '#e08a5b', '#c9c35a', '#6db37a', '#2a6b7a'] as const
+const GRID_VALUE_STOPS = [0, 1, 2, 5, 10, 20] as const
+
+function parseHex(hex: string): [number, number, number] {
+  const h = hex.replace('#', '')
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+}
+
+/** Blend a fill color over the map surface at the same opacity as grid cells. */
+function legendSwatchColor(hex: string): string {
+  const [r, g, b] = parseHex(hex)
+  const [br, bg, bb] = parseHex(MAP_SURFACE)
+  const a = GRID_FILL_OPACITY
+  const mix = (c: number, base: number) => Math.round(c * a + base * (1 - a))
+  return `rgb(${mix(r, br)}, ${mix(g, bg)}, ${mix(b, bb)})`
+}
+
+const GRID_LEGEND_COLORS = GRID_COLORS.map(legendSwatchColor)
+
+const GRID_FILL_COLOR: maplibregl.ExpressionSpecification = (() => {
+  const stops: (string | number)[] = []
+  for (let i = 0; i < GRID_VALUE_STOPS.length; i++) {
+    stops.push(GRID_VALUE_STOPS[i], GRID_COLORS[i])
+  }
+  return [
+    'interpolate',
+    ['linear'],
+    ['get', 'unique_projects.value'],
+    ...stops,
+  ]
+})()
+
 const EMPTY_GEOJSON: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
 /** Get bbox [minLon, minLat, maxLon, maxLat] from a grid cell feature's geometry */
@@ -105,7 +142,7 @@ export function Map({
         {
           id: 'background',
           type: 'background',
-          paint: { 'background-color': '#e8ecf0' },
+          paint: { 'background-color': MAP_SURFACE },
         },
         {
           id: 'land_polygons',
@@ -113,8 +150,19 @@ export function Map({
           source: 'land_polygons',
           'source-layer': 'land',
           paint: {
-            'fill-color': '#f8fafc',
+            'fill-color': MAP_SURFACE,
             'fill-opacity': 1,
+          },
+        },
+        {
+          id: 'project-grid',
+          type: 'fill',
+          source: 'project-tiles',
+          'source-layer': 'aggs',
+          paint: {
+            'fill-color': GRID_FILL_COLOR,
+            'fill-opacity': GRID_FILL_OPACITY,
+            'fill-outline-color': 'rgba(255,255,255,0.35)',
           },
         },
         {
@@ -126,27 +174,6 @@ export function Map({
             'line-color': '#334155',
             'line-width': 0.4,
             'line-opacity': 0.85,
-          },
-        },
-        {
-          id: 'project-grid',
-          type: 'fill',
-          source: 'project-tiles',
-          'source-layer': 'aggs',
-          paint: {
-            'fill-color': [
-              'interpolate',
-              ['linear'],
-              ['get', 'unique_projects.value'], 
-              0, '#f1f5f9',
-              1, '#e8eaef',
-              2, '#dde1f5',
-              5, '#c4c8e8',
-              10, '#9ca3d9',
-              20, '#5c6099',
-            ],
-            'fill-opacity': 0.18,
-            'fill-outline-color': 'rgba(255,255,255,0.5)',
           },
         },
         {
@@ -375,7 +402,11 @@ export function Map({
       minzoom: 0,
       maxzoom: 4,
     })
-    const beforeId = map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined
+    const beforeId = map.getLayer('coastlines')
+      ? 'coastlines'
+      : map.getLayer(CELL_HOVER_LAYER_ID)
+        ? CELL_HOVER_LAYER_ID
+        : undefined
     map.addLayer(
       {
         id: 'project-grid',
@@ -383,19 +414,9 @@ export function Map({
         source: 'project-tiles',
         'source-layer': 'aggs',
         paint: {
-          'fill-color': [
-            'interpolate',
-            ['linear'],
-            ['get', 'unique_projects.value'],
-            0, '#f1f5f9',
-            1, '#e8eaef',
-            2, '#dde1f5',
-            5, '#c4c8e8',
-            10, '#9ca3d9',
-            20, '#5c6099',
-          ],
-          'fill-opacity': 0.18,
-          'fill-outline-color': 'rgba(255,255,255,0.5)',
+          'fill-color': GRID_FILL_COLOR,
+          'fill-opacity': GRID_FILL_OPACITY,
+          'fill-outline-color': 'rgba(255,255,255,0.35)',
         },
       },
       beforeId
@@ -417,7 +438,7 @@ export function Map({
           'text-color': '#0f172a',
         },
       },
-      beforeId
+      map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined
     )
   }, [selectedEovCategories, programmeStatus, mapReady])
 
@@ -536,12 +557,9 @@ export function Map({
         <span className="map-legend-title">Programmes per cell</span>
         <div className="map-legend-scale">
           <div className="map-legend-bar">
-            <span style={{ background: '#f1f5f9' }} />
-            <span style={{ background: '#e8eaef' }} />
-            <span style={{ background: '#dde1f5' }} />
-            <span style={{ background: '#c4c8e8' }} />
-            <span style={{ background: '#9ca3d9' }} />
-            <span style={{ background: '#5c6099' }} />
+            {GRID_LEGEND_COLORS.map((color) => (
+              <span key={color} style={{ background: color }} />
+            ))}
           </div>
           <div className="map-legend-labels">
             <span>0</span>
