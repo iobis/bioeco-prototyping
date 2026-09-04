@@ -4,10 +4,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 
-from config import PROJECT_INDEX
+from config import GRID_INDEX, PROJECT_INDEX
 from es_client import get_es_client
 
 router = APIRouter()
+
+# Enough unique programmes per map cell for terms aggregation.
+_GRID_ID_AGG_SIZE = 10000
+
+
+def _parse_bbox(bbox: str) -> tuple[float, float, float, float]:
+    parts = [p.strip() for p in bbox.split(",")]
+    if len(parts) != 4:
+        raise ValueError("bbox must be min_lon,min_lat,max_lon,max_lat")
+    min_lon, min_lat, max_lon, max_lat = map(float, parts)
+    return min_lon, min_lat, max_lon, max_lat
 
 
 def _build_projects_query(
@@ -16,7 +27,6 @@ def _build_projects_query(
     name: Optional[str] = None,
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
-    bbox: Optional[str] = None,
 ):
     must = []
     filters = []
@@ -44,23 +54,6 @@ def _build_projects_query(
     if end_year is not None:
         filters.append({"range": {"start_year": {"lte": end_year}}})
 
-    if bbox and bbox.strip():
-        try:
-            parts = [p.strip() for p in bbox.split(",")]
-            if len(parts) != 4:
-                raise ValueError("bbox must be min_lon,min_lat,max_lon,max_lat")
-            min_lon, min_lat, max_lon, max_lat = map(float, parts)
-            filters.append({
-                "geo_bounding_box": {
-                    "geometry": {
-                        "top_left": {"lat": max_lat, "lon": min_lon},
-                        "bottom_right": {"lat": min_lat, "lon": max_lon},
-                    }
-                }
-            })
-        except (ValueError, TypeError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid bbox: {e}")
-
     body = {"query": {"bool": {}}}
     if must:
         body["query"]["bool"]["must"] = must
@@ -69,6 +62,83 @@ def _build_projects_query(
     if not must and not filters:
         body["query"] = {"match_all": {}}
     return body
+
+
+def _build_grid_cell_query(
+    min_lon: float,
+    min_lat: float,
+    max_lon: float,
+    max_lat: float,
+    eov: Optional[str] = None,
+    eov_category: Optional[str] = None,
+    name: Optional[str] = None,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
+) -> dict:
+    """Filters aligned with map tiles so cell counts match the programme list."""
+    filters = [
+        {
+            "geo_bounding_box": {
+                "geometry": {
+                    "top_left": {"lat": max_lat, "lon": min_lon},
+                    "bottom_right": {"lat": min_lat, "lon": max_lon},
+                }
+            }
+        }
+    ]
+    if eov and eov.strip():
+        filters.append({"term": {"eov_codes": eov.strip()}})
+    if eov_category and eov_category.strip():
+        categories = [c.strip().lower() for c in eov_category.split(",") if c.strip()]
+        if categories:
+            filters.append({"terms": {"eov_keywords": categories}})
+    if start_year is not None:
+        filters.append({"range": {"end_year": {"gte": start_year}}})
+    if end_year is not None:
+        filters.append({"range": {"start_year": {"lte": end_year}}})
+    if name and name.strip():
+        filters.append({
+            "match": {
+                "project": {
+                    "query": name.strip(),
+                    "fuzziness": "AUTO",
+                }
+            }
+        })
+    return {"bool": {"filter": filters}}
+
+
+def _project_ids_for_cell(
+    es: Elasticsearch,
+    bbox: str,
+    eov: Optional[str] = None,
+    eov_category: Optional[str] = None,
+    name: Optional[str] = None,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
+) -> list[str]:
+    min_lon, min_lat, max_lon, max_lat = _parse_bbox(bbox)
+    body = {
+        "size": 0,
+        "query": _build_grid_cell_query(
+            min_lon,
+            min_lat,
+            max_lon,
+            max_lat,
+            eov=eov,
+            eov_category=eov_category,
+            name=name,
+            start_year=start_year,
+            end_year=end_year,
+        ),
+        "aggs": {
+            "ids": {
+                "terms": {"field": "id", "size": _GRID_ID_AGG_SIZE},
+            }
+        },
+    }
+    resp = es.search(index=GRID_INDEX, body=body)
+    return [b["key"] for b in resp["aggregations"]["ids"]["buckets"]]
 
 
 @router.get("")
@@ -85,27 +155,51 @@ def list_projects(
     size: int = Query(20, ge=1, le=100),
     es: Elasticsearch = Depends(get_es_client),
 ):
-    """List and search projects with optional filters."""
-    query_body = _build_projects_query(
-        eov=eov,
-        eov_category=eov_category,
-        name=name,
-        start_year=start_year,
-        end_year=end_year,
-        bbox=bbox,
-    )
-    body = {
-        **query_body,
-        "from": from_,
-        "size": size,
-        "sort": [{"name.keyword": "asc"}],
-    }
-    if not include_geometry:
-        body["_source"] = {"excludes": ["geometry"]}
+    """List and search projects with optional filters.
+
+    When ``bbox`` is set (map cell filter), programme IDs come from ``project_grid``
+    so the list matches the map cell count; full documents are then loaded from
+    the project index.
+    """
     try:
+        if bbox and bbox.strip():
+            try:
+                project_ids = _project_ids_for_cell(
+                    es,
+                    bbox.strip(),
+                    eov=eov,
+                    eov_category=eov_category,
+                    name=name,
+                    start_year=start_year,
+                    end_year=end_year,
+                )
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid bbox: {e}") from e
+            if not project_ids:
+                return {"total": 0, "items": []}
+            query_body = {"query": {"ids": {"values": project_ids}}}
+        else:
+            query_body = _build_projects_query(
+                eov=eov,
+                eov_category=eov_category,
+                name=name,
+                start_year=start_year,
+                end_year=end_year,
+            )
+
+        body = {
+            **query_body,
+            "from": from_,
+            "size": size,
+            "sort": [{"name.keyword": "asc"}],
+        }
+        if not include_geometry:
+            body["_source"] = {"excludes": ["geometry"]}
         resp = es.search(index=PROJECT_INDEX, body=body)
     except NotFoundError:
         return {"total": 0, "items": []}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
     total = resp["hits"]["total"]["value"]
