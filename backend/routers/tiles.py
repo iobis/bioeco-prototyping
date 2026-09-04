@@ -88,9 +88,14 @@ def get_projects_tile(
         "aggs": {
             "unique_projects": {
                 "cardinality": {
-                    "field": "id"  # Ensure this is the correct field name for project IDs
+                    "field": "id",
                 }
-            }
+            },
+            "unique_eovs": {
+                "cardinality": {
+                    "field": "eov_keywords",
+                }
+            },
         }
     }
     try:

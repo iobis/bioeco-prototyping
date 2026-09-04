@@ -19,9 +19,38 @@ const BASEMAP_MAX_ZOOM = 12
 const MAP_SURFACE = '#f8fafc'
 const GRID_FILL_OPACITY = 0.4
 
-/** Scientific Colour Maps Hawaii (sampled) for programmes-per-cell (0 → 20+). */
+/** Scientific Colour Maps Hawaii (sampled) for grid choropleths. */
 const GRID_COLORS = ['#8c0862', '#c2456e', '#e08a5b', '#c9c35a', '#6db37a', '#2a6b7a'] as const
-const GRID_VALUE_STOPS = [0, 1, 2, 5, 10, 20] as const
+
+type GridMetric = 'programmes' | 'eovs'
+
+const GRID_METRICS: Record<
+  GridMetric,
+  {
+    label: string
+    property: string
+    stops: readonly number[]
+    legendLabels: readonly string[]
+  }
+> = {
+  programmes: {
+    label: 'Programmes per cell',
+    property: 'unique_projects.value',
+    stops: [0, 1, 2, 5, 10, 20],
+    legendLabels: ['0', '1', '2', '5', '10', '20+'],
+  },
+  eovs: {
+    label: 'EOVs per cell',
+    property: 'unique_eovs.value',
+    stops: [0, 1, 2, 3, 5, 8],
+    legendLabels: ['0', '1', '2', '3', '5', '8+'],
+  },
+}
+
+const GRID_METRIC_OPTIONS: { value: GridMetric; label: string }[] = [
+  { value: 'programmes', label: 'Programmes' },
+  { value: 'eovs', label: 'EOVs' },
+]
 
 function parseHex(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
@@ -39,18 +68,23 @@ function legendSwatchColor(hex: string): string {
 
 const GRID_LEGEND_COLORS = GRID_COLORS.map(legendSwatchColor)
 
-const GRID_FILL_COLOR: maplibregl.ExpressionSpecification = (() => {
-  const stops: (string | number)[] = []
-  for (let i = 0; i < GRID_VALUE_STOPS.length; i++) {
-    stops.push(GRID_VALUE_STOPS[i], GRID_COLORS[i])
+function gridFillColor(metric: GridMetric): maplibregl.ExpressionSpecification {
+  const { property, stops } = GRID_METRICS[metric]
+  const stopsExpr: (string | number)[] = []
+  for (let i = 0; i < stops.length; i++) {
+    stopsExpr.push(stops[i], GRID_COLORS[i])
   }
   return [
     'interpolate',
     ['linear'],
-    ['get', 'unique_projects.value'],
-    ...stops,
-  ]
-})()
+    ['get', property],
+    ...stopsExpr,
+  ] as maplibregl.ExpressionSpecification
+}
+
+function gridLabelField(metric: GridMetric): maplibregl.ExpressionSpecification {
+  return ['coalesce', ['to-string', ['get', GRID_METRICS[metric].property]], '0']
+}
 
 const EMPTY_GEOJSON: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
@@ -103,6 +137,9 @@ export function Map({
   const mapRef = useRef<maplibregl.Map | null>(null)
   const mapLoadedRef = useRef(false)
   const [mapReady, setMapReady] = useState(false)
+  const [gridMetric, setGridMetric] = useState<GridMetric>('programmes')
+  const gridMetricRef = useRef<GridMetric>('programmes')
+  gridMetricRef.current = gridMetric
   const lastAppliedSearchRef = useRef<string | undefined>(undefined)
   const hoveredIdRef = useRef<string | null>(null)
   const selectedCellBboxRef = useRef<string | null>(null)
@@ -160,7 +197,7 @@ export function Map({
           source: 'project-tiles',
           'source-layer': 'aggs',
           paint: {
-            'fill-color': GRID_FILL_COLOR,
+            'fill-color': gridFillColor('programmes'),
             'fill-opacity': GRID_FILL_OPACITY,
             'fill-outline-color': 'rgba(255,255,255,0.35)',
           },
@@ -182,7 +219,7 @@ export function Map({
           source: 'project-tiles',
           'source-layer': 'aggs',
           layout: {
-            'text-field': ['coalesce', ['to-string', ['get', 'unique_projects.value']], '0'],
+            'text-field': gridLabelField('programmes'),
             'text-size': 7,
             'text-anchor': 'center',
             'symbol-placement': 'point',
@@ -414,7 +451,7 @@ export function Map({
         source: 'project-tiles',
         'source-layer': 'aggs',
         paint: {
-          'fill-color': GRID_FILL_COLOR,
+          'fill-color': gridFillColor(gridMetricRef.current),
           'fill-opacity': GRID_FILL_OPACITY,
           'fill-outline-color': 'rgba(255,255,255,0.35)',
         },
@@ -428,7 +465,7 @@ export function Map({
         source: 'project-tiles',
         'source-layer': 'aggs',
         layout: {
-          'text-field': ['coalesce', ['to-string', ['get', 'unique_projects.value']], '0'],
+          'text-field': gridLabelField(gridMetricRef.current),
           'text-size': 7,
           'text-anchor': 'center',
           'symbol-placement': 'point',
@@ -441,6 +478,17 @@ export function Map({
       map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined
     )
   }, [selectedEovCategories, programmeStatus, mapReady])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    if (map.getLayer(PROJECT_GRID_LAYER_ID)) {
+      map.setPaintProperty(PROJECT_GRID_LAYER_ID, 'fill-color', gridFillColor(gridMetric))
+    }
+    if (map.getLayer('project-grid-labels')) {
+      map.setLayoutProperty('project-grid-labels', 'text-field', gridLabelField(gridMetric))
+    }
+  }, [gridMetric, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -511,50 +559,64 @@ export function Map({
   return (
     <div className="map-wrap" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} className="map-container" style={{ width: '100%', height: '100%' }} />
-      {(onEovCategoriesChange || onProgrammeStatusChange) ? (
-        <div className="map-eov-widget">
-          {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (
-            <div className="map-filter-section">
-              <span className="map-eov-widget-title">EOV filter</span>
-              <div className="map-eov-toggles">
-                {[...eovVocabulary.top_level_eovs]
-                  .slice()
-                  .sort((a, b) => a.label.localeCompare(b.label))
-                  .map(({ code, label }) => (
-                  <label key={code} className="map-eov-toggle">
-                    <input
-                      type="checkbox"
-                      checked={selectedEovCategories.includes(code)}
-                      onChange={() => toggleEov(code)}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          {onProgrammeStatusChange && (
-            <div className="map-filter-section">
-              <span className="map-eov-widget-title">Status</span>
-              <div className="status-filter" role="group" aria-label="Programme status">
-                {PROGRAMME_STATUS_OPTIONS.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`status-filter-btn${programmeStatus === value ? ' is-active' : ''}`}
-                    aria-pressed={programmeStatus === value}
-                    onClick={() => onProgrammeStatusChange(value)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+      <div className="map-eov-widget">
+        <div className="map-filter-section">
+          <span className="map-eov-widget-title">Map layer</span>
+          <div className="status-filter" role="group" aria-label="Grid metric">
+            {GRID_METRIC_OPTIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                className={`status-filter-btn${gridMetric === value ? ' is-active' : ''}`}
+                aria-pressed={gridMetric === value}
+                onClick={() => setGridMetric(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-      ) : null}
+        {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (
+          <div className="map-filter-section">
+            <span className="map-eov-widget-title">EOV filter</span>
+            <div className="map-eov-toggles">
+              {[...eovVocabulary.top_level_eovs]
+                .slice()
+                .sort((a, b) => a.label.localeCompare(b.label))
+                .map(({ code, label }) => (
+                <label key={code} className="map-eov-toggle">
+                  <input
+                    type="checkbox"
+                    checked={selectedEovCategories.includes(code)}
+                    onChange={() => toggleEov(code)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {onProgrammeStatusChange && (
+          <div className="map-filter-section">
+            <span className="map-eov-widget-title">Status</span>
+            <div className="status-filter" role="group" aria-label="Programme status">
+              {PROGRAMME_STATUS_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`status-filter-btn${programmeStatus === value ? ' is-active' : ''}`}
+                  aria-pressed={programmeStatus === value}
+                  onClick={() => onProgrammeStatusChange(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
       <div className="map-legend">
-        <span className="map-legend-title">Programmes per cell</span>
+        <span className="map-legend-title">{GRID_METRICS[gridMetric].label}</span>
         <div className="map-legend-scale">
           <div className="map-legend-bar">
             {GRID_LEGEND_COLORS.map((color) => (
@@ -562,12 +624,9 @@ export function Map({
             ))}
           </div>
           <div className="map-legend-labels">
-            <span>0</span>
-            <span>1</span>
-            <span>2</span>
-            <span>5</span>
-            <span>10</span>
-            <span>20+</span>
+            {GRID_METRICS[gridMetric].legendLabels.map((label) => (
+              <span key={label}>{label}</span>
+            ))}
           </div>
         </div>
       </div>
