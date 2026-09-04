@@ -12,6 +12,9 @@ const CELL_HOVER_SOURCE_ID = 'cell-hover'
 const CELL_HOVER_LAYER_ID = 'cell-hover-layer'
 const PROJECT_GRID_LAYER_ID = 'project-grid'
 
+/** Highest zoom with OBIS land/coastline vector tiles (https://tiles.obis.org). */
+const BASEMAP_MAX_ZOOM = 12
+
 const EMPTY_GEOJSON: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 
 /** Get bbox [minLon, minLat, maxLon, maxLat] from a grid cell feature's geometry */
@@ -89,13 +92,13 @@ export function Map({
           type: 'vector',
           tiles: ['https://tiles.obis.org/land_tiles/{z}/{x}/{y}.pbf'],
           minzoom: 0,
-          maxzoom: 14,
+          maxzoom: BASEMAP_MAX_ZOOM,
         },
         coastlines: {
           type: 'vector',
           tiles: ['https://tiles.obis.org/coastlines_tiles/{z}/{x}/{y}.pbf'],
           minzoom: 0,
-          maxzoom: 14,
+          maxzoom: BASEMAP_MAX_ZOOM,
         },
       },
       layers: [
@@ -170,6 +173,7 @@ export function Map({
       style,
       center: [0, 20],
       zoom: 2,
+      maxZoom: BASEMAP_MAX_ZOOM,
     })
 
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
