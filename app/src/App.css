@@ -23,6 +23,10 @@
   flex-shrink: 0;
 }
 
+.site-header-logo--ioc {
+  height: 48px;
+}
+
 .site-header h1 {
   margin: 0 0 0 10px;
   font-family: "DM Sans", system-ui, -apple-system, sans-serif;
@@ -39,12 +43,24 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  gap: 20px;
+}
+
+.site-header-nav-actions {
+  display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.site-header-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .site-header-link {
   margin: 0;
-  padding: 6px 10px;
+  padding: 6px 8px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -60,20 +76,22 @@
 
 .site-header-submit-btn {
   display: inline-block;
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: 6px;
-  background: var(--accent);
-  color: #fff;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
   font-family: "DM Sans", system-ui, -apple-system, sans-serif;
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
   text-decoration: none;
   white-space: nowrap;
-  transition: opacity 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .site-header-submit-btn:hover {
-  opacity: 0.85;
+  background: var(--accent);
+  color: #fff;
 }
 
 .app-main {
@@ -456,6 +474,166 @@
 
 .dialog-box--about {
   max-width: 680px;
+}
+
+.dialog-box--import-report {
+  max-width: 820px;
+}
+
+.import-report-body h2 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.import-report-body h2:first-of-type {
+  margin-top: 0;
+}
+
+.import-report-meta {
+  margin: 0 0 1rem;
+  font-size: 0.9375rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.import-report-meta code {
+  font-size: 0.875em;
+}
+
+.import-report-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0 0 0.5rem;
+}
+
+.import-report-stats div {
+  margin: 0;
+}
+
+.import-report-stats dt {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  margin: 0 0 0.15rem;
+}
+
+.import-report-stats dd {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.import-report-counts {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.import-report-counts li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9375rem;
+}
+
+.import-report-code-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  text-align: left;
+}
+
+.import-report-count {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.import-report-level {
+  display: inline-block;
+  min-width: 3.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.import-report-level--error {
+  color: #b91c1c;
+}
+
+.import-report-level--warn {
+  color: #b45309;
+}
+
+.import-report-level--info {
+  color: #0369a1;
+}
+
+.import-report-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+}
+
+.import-report-filters select {
+  margin-left: 0.35rem;
+  font: inherit;
+}
+
+.import-report-issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 40vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.import-report-issues li {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.import-report-issues li:last-child {
+  border-bottom: none;
+}
+
+.import-report-issue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.65rem;
+  font-size: 0.8125rem;
+}
+
+.import-report-issue-head code {
+  font-size: 0.8125rem;
+}
+
+.import-report-source {
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.import-report-message {
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text);
 }
 
 .about-dialog-header h1 {

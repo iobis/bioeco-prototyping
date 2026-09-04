@@ -11,7 +11,7 @@ import logging
 from polygon_geohasher.polygon_geohasher import polygon_to_geohashes
 import geohash
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import json
 import copy
@@ -24,6 +24,7 @@ except Exception:
 
 project_index = "project"
 grid_index = "project_grid"
+import_run_index = "import_run"
 
 # Colored log helpers for clear ingest diagnostics in terminal output.
 ANSI_RESET = "\033[0m"
@@ -134,6 +135,28 @@ def ensure_indices(client, clear_indexes: bool = False):
         }
     }
 
+    import_run_mapping = {
+        "mappings": {
+            "properties": {
+                "run_id": {"type": "keyword"},
+                "source": {"type": "keyword"},
+                "started_at": {"type": "date"},
+                "finished_at": {"type": "date"},
+                "stats": {"type": "object", "enabled": True},
+                "issue_counts": {"type": "object", "enabled": True},
+                "issues": {
+                    "type": "nested",
+                    "properties": {
+                        "level": {"type": "keyword"},
+                        "code": {"type": "keyword"},
+                        "source": {"type": "keyword"},
+                        "message": {"type": "text"},
+                    },
+                },
+            }
+        }
+    }
+
     for index, mapping in ((project_index, project_mapping), (grid_index, grid_mapping)):
         exists = client.indices.exists(index=index)
         if clear_indexes and exists:
@@ -151,6 +174,11 @@ def ensure_indices(client, clear_indexes: bool = False):
                     }
                 },
             )
+
+    # Keep import_run history across --clear-indexes (project/grid rebuilds).
+    if not client.indices.exists(index=import_run_index):
+        logging.info("Creating index %s with mapping", import_run_index)
+        client.indices.create(index=import_run_index, body=import_run_mapping)
 
 # Load EOV vocabulary for resolving URIs to top-level and subvariable codes
 
@@ -993,6 +1021,13 @@ def index_project_bindings(
                 "NOT_INDEXED",
                 f"project failed to index: '{project.get('name', '')}' ({project.get('id', '')}) from {source_file} | reason: {e}",
             )
+            if issue_logger is not None:
+                issue_logger.record(
+                    "ERROR",
+                    "ERR_NOT_INDEXED",
+                    source_file,
+                    f"project failed to index: {e}",
+                )
 
         if indexed_ok:
             removed = delete_grid_docs_for_project(client, project["id"])
@@ -1035,6 +1070,13 @@ def index_project_bindings(
                         "GRID_FAILED",
                         f"grid indexing failed for '{project.get('name', '')}' ({project.get('id', '')}) | reason: {e}",
                     )
+                    if issue_logger is not None:
+                        issue_logger.record(
+                            "ERROR",
+                            "ERR_GRID_FAILED",
+                            source_file_by_id.get(original_uri, "<unknown>"),
+                            f"grid indexing failed: {e}",
+                        )
 
     if prune_stale:
         prune_stats = prune_stale_projects(client, active_project_ids)
@@ -1103,6 +1145,56 @@ class ImportIssueLogger:
     @property
     def records(self):
         return list(self._records)
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return dict(self._counts)
+
+
+def _stats_for_storage(stats: dict) -> dict:
+    """Make index stats JSON-serializable for Elasticsearch."""
+    out = {}
+    for key, value in stats.items():
+        if isinstance(value, set):
+            out[key] = sorted(value)
+        else:
+            out[key] = value
+    return out
+
+
+def save_import_run(
+    client,
+    *,
+    source: str,
+    stats: dict,
+    issue_logger: "ImportIssueLogger | None" = None,
+    started_at: datetime | None = None,
+) -> str:
+    """
+    Persist a summary of an indexing run (stats + structured issues) to Elasticsearch.
+    Returns the run_id used as the document id.
+    """
+    finished_at = datetime.now(timezone.utc)
+    started = started_at or finished_at
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    run_id = finished_at.strftime("%Y%m%dT%H%M%SZ") + "_" + uuid.uuid4().hex[:8]
+    records = issue_logger.records if issue_logger is not None else []
+    counts = issue_logger.counts if issue_logger is not None else {}
+    doc = {
+        "run_id": run_id,
+        "source": source,
+        "started_at": started.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "stats": _stats_for_storage(stats),
+        "issue_counts": counts,
+        "issues": records,
+    }
+    if not client.indices.exists(index=import_run_index):
+        ensure_indices(client, clear_indexes=False)
+    client.index(index=import_run_index, id=run_id, document=doc, refresh="true")
+    log_colored("OK", "IMPORT_RUN", f"saved import run {run_id} ({len(records)} issues)")
+    return run_id
 
 
 def create_es_client(es_url: str):

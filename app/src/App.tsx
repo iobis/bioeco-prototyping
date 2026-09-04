@@ -3,6 +3,7 @@ import type { EovVocabulary } from './eovVocabulary'
 import { Map } from './components/Map'
 import { ProjectList } from './components/ProjectList'
 import { AboutOverlay } from './components/AboutOverlay'
+import { ImportReportOverlay } from './components/ImportReportOverlay'
 import { ProjectDetailDialog } from './components/ProjectDetailDialog'
 import './App.css'
 
@@ -19,6 +20,7 @@ export default function App() {
   const [selectedEovCategories, setSelectedEovCategories] = useState<string[]>([])
   const [eovVocabulary, setEovVocabulary] = useState<EovVocabulary | null>(null)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [importReportOpen, setImportReportOpen] = useState(false)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), SEARCH_DEBOUNCE_MS)
@@ -35,19 +37,26 @@ export default function App() {
   return (
     <div className="app">
       <header className="site-header">
-      <img src={IOC_LOGO_SRC} alt="IOC logo" className="site-header-logo" />
+      <img src={IOC_LOGO_SRC} alt="IOC logo" className="site-header-logo site-header-logo--ioc" />
       <img src={GOOS_LOGO_SRC} alt="GOOS logo" className="site-header-logo" />
       <h1>GOOS BioEco Portal</h1>
         <nav className="site-header-nav" aria-label="Site">
-          <a href="https://eovmetadata.obis.org/home" target="_blank" rel="noopener noreferrer" className="site-header-submit-btn">
-            Submit or update an entry
-          </a>
-          <a href="https://github.com/iobis/bioeco-prototyping/issues/new" target="_blank" rel="noopener noreferrer" className="site-header-submit-btn">
-            Send Feedback
-          </a>
-          <button type="button" className="site-header-link" onClick={() => setAboutOpen(true)}>
-            About
-          </button>
+          <div className="site-header-nav-actions">
+            <a href="https://eovmetadata.obis.org/home" target="_blank" rel="noopener noreferrer" className="site-header-submit-btn">
+              Submit or update an entry
+            </a>
+            <a href="https://github.com/iobis/bioeco-prototyping/issues/new" target="_blank" rel="noopener noreferrer" className="site-header-submit-btn">
+              Send Feedback
+            </a>
+          </div>
+          <div className="site-header-nav-links">
+            <button type="button" className="site-header-link" onClick={() => setImportReportOpen(true)}>
+              Data quality
+            </button>
+            <button type="button" className="site-header-link" onClick={() => setAboutOpen(true)}>
+              About
+            </button>
+          </div>
         </nav>
       </header>
       <div className="app-main">
@@ -80,6 +89,7 @@ export default function App() {
         />
       </div>
       <AboutOverlay open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <ImportReportOverlay open={importReportOpen} onClose={() => setImportReportOpen(false)} />
     </div>
   )
 }

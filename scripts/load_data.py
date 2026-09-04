@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import urllib3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,6 +20,7 @@ from util import (
     log_colored,
     log_index_summary,
     resolve_eov_uri,
+    save_import_run,
 )
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -328,6 +330,7 @@ def build_bindings_from_jsonld_graph(graph):
 
 def main(input_source: str | None, clear_indexes: bool = False, print_indexed_json: bool = False, es_url: str = "", prune_stale: bool = True):
     load_dotenv(REPO_ROOT / ".env", override=False)
+    started_at = datetime.now(timezone.utc)
 
     if not es_url:
         raise SystemExit("You must provide an Elasticsearch endpoint via --es-url.")
@@ -349,6 +352,13 @@ def main(input_source: str | None, clear_indexes: bool = False, print_indexed_js
         prune_stale=prune_stale,
     )
     log_index_summary(stats)
+    save_import_run(
+        client,
+        source="jsonld-export",
+        stats=stats,
+        issue_logger=None,
+        started_at=started_at,
+    )
 
 
 if __name__ == "__main__":

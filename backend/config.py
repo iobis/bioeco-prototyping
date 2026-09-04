@@ -10,5 +10,6 @@ ELASTIC_PASSWORD = os.environ.get("ELASTIC_PASSWORD")
 
 PROJECT_INDEX = os.environ.get("PROJECT_INDEX", "project")
 GRID_INDEX = os.environ.get("GRID_INDEX", "project_grid")
+IMPORT_RUN_INDEX = os.environ.get("IMPORT_RUN_INDEX", "import_run")
 
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
