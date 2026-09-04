@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { EovVocabulary } from './eovVocabulary'
+import type { ProgrammeStatus } from './programmeStatus'
 import { Map } from './components/Map'
 import { ProjectList } from './components/ProjectList'
 import { AboutOverlay } from './components/AboutOverlay'
@@ -17,6 +18,7 @@ export default function App() {
   const [selectedCellBbox, setSelectedCellBbox] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
+  const [programmeStatus, setProgrammeStatus] = useState<ProgrammeStatus>('all')
   const [selectedEovCategories, setSelectedEovCategories] = useState<string[]>([])
   const [eovVocabulary, setEovVocabulary] = useState<EovVocabulary | null>(null)
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -67,6 +69,8 @@ export default function App() {
           selectedEovCategories={selectedEovCategories}
           onEovCategoriesChange={setSelectedEovCategories}
           eovVocabulary={eovVocabulary}
+          programmeStatus={programmeStatus}
+          onProgrammeStatusChange={setProgrammeStatus}
         />
         <aside className="panel">
           <div className="panel-content">
@@ -80,6 +84,7 @@ export default function App() {
               debouncedSearchQuery={debouncedSearchQuery}
               eovCategories={selectedEovCategories}
               eovVocabulary={eovVocabulary}
+              programmeStatus={programmeStatus}
             />
           </div>
         </aside>

@@ -6,6 +6,7 @@ from elasticsearch.exceptions import NotFoundError
 
 from config import GRID_INDEX, PROJECT_INDEX
 from es_client import get_es_client
+from query_filters import normalize_status, status_filters
 
 router = APIRouter()
 
@@ -27,6 +28,7 @@ def _build_projects_query(
     name: Optional[str] = None,
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
+    status: Optional[str] = None,
 ):
     must = []
     filters = []
@@ -54,6 +56,8 @@ def _build_projects_query(
     if end_year is not None:
         filters.append({"range": {"start_year": {"lte": end_year}}})
 
+    filters.extend(status_filters(status))
+
     body = {"query": {"bool": {}}}
     if must:
         body["query"]["bool"]["must"] = must
@@ -74,6 +78,7 @@ def _build_grid_cell_query(
     name: Optional[str] = None,
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
+    status: Optional[str] = None,
 ) -> dict:
     """Filters aligned with map tiles so cell counts match the programme list."""
     filters = [
@@ -105,6 +110,7 @@ def _build_grid_cell_query(
                 }
             }
         })
+    filters.extend(status_filters(status))
     return {"bool": {"filter": filters}}
 
 
@@ -116,6 +122,7 @@ def _project_ids_for_cell(
     name: Optional[str] = None,
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
+    status: Optional[str] = None,
 ) -> list[str]:
     min_lon, min_lat, max_lon, max_lat = _parse_bbox(bbox)
     body = {
@@ -130,6 +137,7 @@ def _project_ids_for_cell(
             name=name,
             start_year=start_year,
             end_year=end_year,
+            status=status,
         ),
         "aggs": {
             "ids": {
@@ -149,6 +157,10 @@ def list_projects(
     name: Optional[str] = Query(None, description="Free-text search on name and description"),
     start_year: Optional[int] = Query(None, description="Filter projects active on or after this year"),
     end_year: Optional[int] = Query(None, description="Filter projects active on or before this year"),
+    status: Optional[str] = Query(
+        "all",
+        description="Programme activity: active, inactive, or all (relative to the current calendar year)",
+    ),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
     include_geometry: bool = Query(False, description="Include geometry in each project item"),
     from_: int = Query(0, alias="from", ge=0),
@@ -162,6 +174,11 @@ def list_projects(
     the project index.
     """
     try:
+        status_norm = normalize_status(status)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    try:
         if bbox and bbox.strip():
             try:
                 project_ids = _project_ids_for_cell(
@@ -172,6 +189,7 @@ def list_projects(
                     name=name,
                     start_year=start_year,
                     end_year=end_year,
+                    status=status_norm,
                 )
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid bbox: {e}") from e
@@ -185,6 +203,7 @@ def list_projects(
                 name=name,
                 start_year=start_year,
                 end_year=end_year,
+                status=status_norm,
             )
 
         body = {

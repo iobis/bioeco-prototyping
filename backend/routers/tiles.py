@@ -1,12 +1,13 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import NotFoundError
 
 from config import GRID_INDEX
 from es_client import get_es_client
+from query_filters import normalize_status, status_filters
 
 router = APIRouter()
 
@@ -17,6 +18,7 @@ def _build_mvt_query(
     name: Optional[str],
     start_year: Optional[int],
     end_year: Optional[int],
+    status: Optional[str],
 ) -> dict:
     filters = []
     if eov and eov.strip():
@@ -38,6 +40,7 @@ def _build_mvt_query(
                 }
             }
         })
+    filters.extend(status_filters(status))
     if not filters:
         return {"match_all": {}}
     return {"bool": {"filter": filters}}
@@ -54,6 +57,10 @@ def get_projects_tile(
     name: Optional[str] = Query(None, description="Filter by project name (full-text match, same as list)"),
     start_year: Optional[int] = Query(None),
     end_year: Optional[int] = Query(None),
+    status: Optional[str] = Query(
+        "all",
+        description="Programme activity: active, inactive, or all (relative to the current calendar year)",
+    ),
     es: Elasticsearch = Depends(get_es_client),
 ):
     """Return a Mapbox Vector Tile from Elasticsearch's native _mvt API (project_grid)."""
@@ -67,8 +74,13 @@ def get_projects_tile(
             content=b"", media_type="application/vnd.mapbox-vector-tile", status_code=400
         )
 
+    try:
+        status_norm = normalize_status(status)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
     body = {
-        "query": _build_mvt_query(eov, eov_category, name, start_year, end_year),
+        "query": _build_mvt_query(eov, eov_category, name, start_year, end_year, status_norm),
         "grid_agg": "geotile",
         "grid_precision": 5,
         "grid_type": "grid",

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { buildEovResolver } from '../eovVocabulary'
 import type { EovVocabulary } from '../eovVocabulary'
+import type { ProgrammeStatus } from '../programmeStatus'
 
 interface Eov {
   code?: string
@@ -32,6 +33,7 @@ interface ProjectListProps {
   debouncedSearchQuery?: string
   eovCategories?: string[]
   eovVocabulary?: EovVocabulary | null
+  programmeStatus?: ProgrammeStatus
 }
 
 /** Group project EOVs by top-level category using vocabulary resolver; return entries with label and badge bg. */
@@ -62,6 +64,7 @@ export function ProjectList({
   debouncedSearchQuery = '',
   eovCategories = [],
   eovVocabulary = null,
+  programmeStatus = 'all',
 }: ProjectListProps) {
   const [data, setData] = useState<ProjectsResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -75,6 +78,7 @@ export function ProjectList({
     if (debouncedSearchQuery) params.set('name', debouncedSearchQuery)
     if (cellBbox?.trim()) params.set('bbox', cellBbox.trim())
     if (eovCategories.length) params.set('eov_category', eovCategories.join(','))
+    if (programmeStatus && programmeStatus !== 'all') params.set('status', programmeStatus)
     fetch(`/api/projects?${params}`)
       .then((r) => {
         if (!r.ok) throw new Error(r.statusText)
@@ -83,7 +87,7 @@ export function ProjectList({
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [debouncedSearchQuery, cellBbox, eovCategories])
+  }, [debouncedSearchQuery, cellBbox, eovCategories, programmeStatus])
 
   return (
     <>

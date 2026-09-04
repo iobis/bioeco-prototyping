@@ -1,6 +1,8 @@
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import { useEffect, useRef, useState } from 'react'
 import type { EovVocabulary } from '../eovVocabulary'
+import type { ProgrammeStatus } from '../programmeStatus'
+import { PROGRAMME_STATUS_OPTIONS } from '../programmeStatus'
 
 const HIGHLIGHT_SOURCE_ID = 'project-highlight'
 const HIGHLIGHT_LAYER_ID = 'project-highlight-layer'
@@ -43,6 +45,8 @@ interface MapProps {
   selectedEovCategories?: string[]
   onEovCategoriesChange?: (keys: string[]) => void
   eovVocabulary?: EovVocabulary | null
+  programmeStatus?: ProgrammeStatus
+  onProgrammeStatusChange?: (status: ProgrammeStatus) => void
 }
 
 export function Map({
@@ -52,6 +56,8 @@ export function Map({
   selectedEovCategories = [],
   onEovCategoriesChange,
   eovVocabulary = null,
+  programmeStatus = 'all',
+  onProgrammeStatusChange,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -337,10 +343,11 @@ export function Map({
     const map = mapRef.current
     if (!map || !map.getStyle() || !mapLoadedRef.current) return
     const eovCat = selectedEovCategories.length ? selectedEovCategories.join(',') : ''
-    const tileKey = eovCat
+    const statusKey = programmeStatus === 'all' ? '' : programmeStatus
+    const tileKey = `${eovCat}|${statusKey}`
     if (lastAppliedSearchRef.current === tileKey) return
-    // Avoid replacing the source on initial load when we have no EOV filters – the style already has project-tiles.
-    if (!tileKey && lastAppliedSearchRef.current === undefined) {
+    // Avoid replacing the source on initial load when we have no filters – the style already has project-tiles.
+    if (!eovCat && !statusKey && lastAppliedSearchRef.current === undefined) {
       lastAppliedSearchRef.current = tileKey
       return
     }
@@ -349,6 +356,7 @@ export function Map({
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
     const params = new URLSearchParams()
     if (eovCat) params.set('eov_category', eovCat)
+    if (statusKey) params.set('status', statusKey)
     const queryString = params.toString()
     const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryString ? `?${queryString}` : ''}`
 
@@ -407,7 +415,7 @@ export function Map({
       },
       beforeId
     )
-  }, [selectedEovCategories, mapReady])
+  }, [selectedEovCategories, programmeStatus, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -478,24 +486,46 @@ export function Map({
   return (
     <div className="map-wrap" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} className="map-container" style={{ width: '100%', height: '100%' }} />
-      {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (
+      {(onEovCategoriesChange || onProgrammeStatusChange) ? (
         <div className="map-eov-widget">
-          <span className="map-eov-widget-title">EOV filter</span>
-          <div className="map-eov-toggles">
-            {[...eovVocabulary.top_level_eovs]
-              .slice()
-              .sort((a, b) => a.label.localeCompare(b.label))
-              .map(({ code, label }) => (
-              <label key={code} className="map-eov-toggle">
-                <input
-                  type="checkbox"
-                  checked={selectedEovCategories.includes(code)}
-                  onChange={() => toggleEov(code)}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
-          </div>
+          {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (
+            <div className="map-filter-section">
+              <span className="map-eov-widget-title">EOV filter</span>
+              <div className="map-eov-toggles">
+                {[...eovVocabulary.top_level_eovs]
+                  .slice()
+                  .sort((a, b) => a.label.localeCompare(b.label))
+                  .map(({ code, label }) => (
+                  <label key={code} className="map-eov-toggle">
+                    <input
+                      type="checkbox"
+                      checked={selectedEovCategories.includes(code)}
+                      onChange={() => toggleEov(code)}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {onProgrammeStatusChange && (
+            <div className="map-filter-section">
+              <span className="map-eov-widget-title">Status</span>
+              <div className="status-filter" role="group" aria-label="Programme status">
+                {PROGRAMME_STATUS_OPTIONS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`status-filter-btn${programmeStatus === value ? ' is-active' : ''}`}
+                    aria-pressed={programmeStatus === value}
+                    onClick={() => onProgrammeStatusChange(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
       <div className="map-legend">
