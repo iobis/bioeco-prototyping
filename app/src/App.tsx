@@ -41,7 +41,7 @@ export default function App() {
       <header className="site-header">
       <img src={IOC_LOGO_SRC} alt="IOC logo" className="site-header-logo site-header-logo--ioc" />
       <img src={GOOS_LOGO_SRC} alt="GOOS logo" className="site-header-logo" />
-      <h1>GOOS BioEco Portal</h1>
+      <h1><a href="/">GOOS BioEco Portal</a></h1>
         <nav className="site-header-nav" aria-label="Site">
           <div className="site-header-nav-actions">
             <a href="https://eovmetadata.obis.org/home" target="_blank" rel="noopener noreferrer" className="site-header-submit-btn">

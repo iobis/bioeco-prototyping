@@ -38,6 +38,11 @@
   color: var(--text);
 }
 
+.site-header h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+
 .site-header-nav {
   margin-left: auto;
   flex-shrink: 0;
