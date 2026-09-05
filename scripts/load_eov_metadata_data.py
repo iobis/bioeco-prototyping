@@ -326,6 +326,29 @@ def build_bindings_from_eov_app_graph(
 
         _append_keyword_eovs(node, proj_id, eov_bindings, issue_logger, source)
 
+        # Additional properties: readiness levels + keep full list for nested indexing
+        add_props = as_list(get_schema(node, "additionalProperty"))
+        ap_pairs = []
+        for ap in add_props:
+            if not isinstance(ap, dict):
+                continue
+            name_ap = str(get_schema(ap, "name") or "").strip()
+            value_ap = str(get_schema(ap, "value") or "").strip()
+            if not name_ap:
+                continue
+            if value_ap:
+                ap_pairs.append(f"{name_ap}:{value_ap}")
+            if name_ap == "readinessData":
+                b["readiness_data"] = {"value": value_ap}
+            elif name_ap == "readinessRequirements":
+                b["readiness_requirements"] = {"value": value_ap}
+            elif name_ap == "readinessCoordination":
+                b["readiness_coordination"] = {"value": value_ap}
+            elif name_ap == "maintenanceFrequency":
+                b["maintenance_frequency"] = {"value": value_ap}
+        if ap_pairs:
+            b["additional_properties"] = {"value": "||".join(ap_pairs)}
+
         wkt_val = extract_wkt(node)
         if wkt_val:
             b["geometry"] = {"value": wkt_val}

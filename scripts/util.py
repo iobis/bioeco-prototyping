@@ -949,6 +949,16 @@ def index_project_bindings(
                         }
                     )
                 project["additional_properties"] = additional_properties
+                # Promote readiness* from additional properties when not already set
+                readiness_from_ap = {
+                    "readinessData": "readiness_data",
+                    "readinessRequirements": "readiness_requirements",
+                    "readinessCoordination": "readiness_coordination",
+                }
+                for ap in additional_properties:
+                    field = readiness_from_ap.get(ap.get("name") or "")
+                    if field and ap.get("value") and not project.get(field):
+                        project[field] = ap["value"]
             else:
                 # Don't send an empty string for a nested field
                 del project["additional_properties"]

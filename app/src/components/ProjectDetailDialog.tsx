@@ -10,6 +10,9 @@ export interface ProjectDetail {
   eovs?: Array<{ code?: string; label?: string; name?: string; uri?: string }>
   contacts?: Array<{ name?: string; email?: string; url?: string; contact_type?: string }>
   services?: Array<{ name?: string; url?: string }>
+  readiness_data?: string
+  readiness_requirements?: string
+  readiness_coordination?: string
 }
 
 interface ProjectDetailDialogProps {
@@ -68,6 +71,31 @@ export function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogP
                   <span className="dialog-meta-label">Period</span>{' '}
                   {project.start_year ?? '?'} – {project.end_year ?? '?'}
                 </p>
+              )}
+              {(project.readiness_data || project.readiness_requirements || project.readiness_coordination) && (
+                <div className="dialog-section">
+                  <span className="dialog-meta-label">Readiness levels</span>
+                  <div className="dialog-readiness" aria-label="Readiness levels">
+                    {project.readiness_data && (
+                      <div className="dialog-readiness-row">
+                        <span className="dialog-readiness-label">Data</span>
+                        <span className="dialog-readiness-value">{project.readiness_data}</span>
+                      </div>
+                    )}
+                    {project.readiness_requirements && (
+                      <div className="dialog-readiness-row">
+                        <span className="dialog-readiness-label">Requirements</span>
+                        <span className="dialog-readiness-value">{project.readiness_requirements}</span>
+                      </div>
+                    )}
+                    {project.readiness_coordination && (
+                      <div className="dialog-readiness-row">
+                        <span className="dialog-readiness-label">Coordination</span>
+                        <span className="dialog-readiness-value">{project.readiness_coordination}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
               {project.eovs?.length ? (
                 <div className="dialog-section">

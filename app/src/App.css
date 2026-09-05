@@ -820,12 +820,36 @@
 
 .dialog-meta-label {
   display: block;
-  font-family: "Space Mono", monospace;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   margin-bottom: 4px;
+}
+
+.dialog-readiness {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dialog-readiness-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.dialog-readiness-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.dialog-readiness-value {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .dialog-eov-list {
