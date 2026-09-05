@@ -23,6 +23,11 @@ const CELL_HIGHLIGHT_LAYER_ID = 'cell-highlight-layer'
 const CELL_HOVER_SOURCE_ID = 'cell-hover'
 const CELL_HOVER_LAYER_ID = 'cell-hover-layer'
 const PROJECT_GRID_LAYER_ID = 'project-grid'
+const OBIS_SOURCE_ID = 'obis-occurrence'
+const OBIS_LAYER_ID = 'obis-occurrence-fill'
+const OBIS_LABELS_LAYER_ID = 'obis-occurrence-labels'
+/** OBIS occurrence density tiles; filter with `q=` on GOOS EOV tag URLs for now. */
+const OBIS_TILE_TEMPLATE = 'https://api.obis.org/occurrence/tile/{x}/{y}/{z}.mvt'
 
 /** Highest zoom with OBIS land/coastline vector tiles (https://tiles.obis.org). */
 const BASEMAP_MAX_ZOOM = 12
@@ -61,6 +66,7 @@ const COLOR_SCHEME_OPTIONS = (Object.keys(COLOR_SCHEMES) as ColorSchemeId[]).map
   label: COLOR_SCHEMES[id].label,
 }))
 
+type MapLayerMode = 'programmes' | 'eovs' | 'data'
 type GridMetric = 'programmes' | 'eovs'
 
 const GRID_METRICS: Record<
@@ -86,10 +92,30 @@ const GRID_METRICS: Record<
   },
 }
 
-const GRID_METRIC_OPTIONS: { value: GridMetric; label: string }[] = [
+/** OBIS occurrence count legend (matches mapper.obis.org / explore map). */
+const OBIS_METRIC = {
+  label: 'OBIS records',
+  property: 'doc_count',
+  stops: [1, 10, 100, 1000, 10000, 50000] as const,
+  legendLabels: ['1', '10', '100', '1k', '10k', '50k+'] as const,
+}
+
+const MAP_LAYER_OPTIONS: { value: MapLayerMode; label: string }[] = [
   { value: 'programmes', label: 'Programmes' },
   { value: 'eovs', label: 'EOVs' },
+  { value: 'data', label: 'Data' },
 ]
+
+function eovTagUrls(vocab: EovVocabulary | null, codes: string[]): string[] {
+  if (!vocab?.top_level_eovs?.length || !codes.length) return []
+  const byCode = Object.fromEntries(vocab.top_level_eovs.map((e) => [e.code, e]))
+  const urls: string[] = []
+  for (const code of codes) {
+    const url = byCode[code]?.url?.trim()
+    if (url) urls.push(url)
+  }
+  return urls
+}
 
 function parseHex(hex: string): [number, number, number] {
   const h = hex.replace('#', '')
@@ -118,6 +144,19 @@ function gridFillColor(
     'interpolate',
     ['linear'],
     ['get', property],
+    ...stopsExpr,
+  ] as maplibregl.ExpressionSpecification
+}
+
+function obisFillColor(colors: readonly string[]): maplibregl.ExpressionSpecification {
+  const stopsExpr: (string | number)[] = []
+  for (let i = 0; i < OBIS_METRIC.stops.length; i++) {
+    stopsExpr.push(OBIS_METRIC.stops[i], colors[i])
+  }
+  return [
+    'interpolate',
+    ['linear'],
+    ['get', OBIS_METRIC.property],
     ...stopsExpr,
   ] as maplibregl.ExpressionSpecification
 }
@@ -181,15 +220,15 @@ export function Map({
   const mapRef = useRef<maplibregl.Map | null>(null)
   const mapLoadedRef = useRef(false)
   const [mapReady, setMapReady] = useState(false)
-  const [gridMetric, setGridMetric] = useState<GridMetric>('programmes')
+  const [mapLayer, setMapLayer] = useState<MapLayerMode>('programmes')
   const [colorScheme, setColorScheme] = useState<ColorSchemeId>('hawaii')
   const [gridOpacity, setGridOpacity] = useState(DEFAULT_GRID_OPACITY)
   const [showGridLabels, setShowGridLabels] = useState(true)
-  const gridMetricRef = useRef<GridMetric>('programmes')
+  const mapLayerRef = useRef<MapLayerMode>('programmes')
   const colorSchemeRef = useRef<ColorSchemeId>('hawaii')
   const gridOpacityRef = useRef(DEFAULT_GRID_OPACITY)
   const showGridLabelsRef = useRef(true)
-  gridMetricRef.current = gridMetric
+  mapLayerRef.current = mapLayer
   colorSchemeRef.current = colorScheme
   gridOpacityRef.current = gridOpacity
   showGridLabelsRef.current = showGridLabels
@@ -199,6 +238,8 @@ export function Map({
   const selectedCellBboxRef = useRef<string | null>(null)
   hoveredIdRef.current = hoveredProjectId ?? null
   selectedCellBboxRef.current = selectedCellBbox ?? null
+  const isDataLayer = mapLayer === 'data'
+  const gridMetric: GridMetric = mapLayer === 'eovs' ? 'eovs' : 'programmes'
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -510,7 +551,7 @@ export function Map({
         'source-layer': 'aggs',
         paint: {
           'fill-color': gridFillColor(
-            gridMetricRef.current,
+            mapLayerRef.current === 'eovs' ? 'eovs' : 'programmes',
             COLOR_SCHEMES[colorSchemeRef.current].colors,
           ),
           'fill-opacity': gridOpacityRef.current,
@@ -526,7 +567,7 @@ export function Map({
         source: 'project-tiles',
         'source-layer': 'aggs',
         layout: {
-          'text-field': gridLabelField(gridMetricRef.current),
+          'text-field': gridLabelField(mapLayerRef.current === 'eovs' ? 'eovs' : 'programmes'),
           'text-size': 7,
           'text-anchor': 'center',
           'symbol-placement': 'point',
@@ -539,11 +580,130 @@ export function Map({
       },
       map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined
     )
+    if (mapLayerRef.current === 'data') {
+      if (map.getLayer(PROJECT_GRID_LAYER_ID)) {
+        map.setLayoutProperty(PROJECT_GRID_LAYER_ID, 'visibility', 'none')
+      }
+      if (map.getLayer('project-grid-labels')) {
+        map.setLayoutProperty('project-grid-labels', 'visibility', 'none')
+      }
+    }
   }, [selectedEovCategories, programmeStatus, selectedReadiness, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
+
+    const removeObis = () => {
+      if (map.getLayer(OBIS_LABELS_LAYER_ID)) map.removeLayer(OBIS_LABELS_LAYER_ID)
+      if (map.getLayer(OBIS_LAYER_ID)) map.removeLayer(OBIS_LAYER_ID)
+      if (map.getSource(OBIS_SOURCE_ID)) map.removeSource(OBIS_SOURCE_ID)
+    }
+
+    const setProgrammeGridVisible = (visible: boolean) => {
+      const visibility = visible ? 'visible' : 'none'
+      if (map.getLayer(PROJECT_GRID_LAYER_ID)) {
+        map.setLayoutProperty(PROJECT_GRID_LAYER_ID, 'visibility', visibility)
+      }
+      if (map.getLayer('project-grid-labels')) {
+        map.setLayoutProperty(
+          'project-grid-labels',
+          'visibility',
+          visible && showGridLabelsRef.current ? 'visible' : 'none',
+        )
+      }
+      if (map.getLayer(CELL_HOVER_LAYER_ID)) {
+        map.setLayoutProperty(CELL_HOVER_LAYER_ID, 'visibility', visibility)
+      }
+      if (map.getLayer(CELL_HIGHLIGHT_LAYER_ID)) {
+        map.setLayoutProperty(CELL_HIGHLIGHT_LAYER_ID, 'visibility', visibility)
+      }
+    }
+
+    if (mapLayer !== 'data') {
+      removeObis()
+      setProgrammeGridVisible(true)
+      return
+    }
+
+    setProgrammeGridVisible(false)
+
+    const tags = eovTagUrls(eovVocabulary, selectedEovCategories)
+    if (!tags.length) {
+      removeObis()
+      return
+    }
+
+    const params = new URLSearchParams()
+    // Text search on tags via search_blob until a dedicated tags= filter exists.
+    params.set('q', tags.join(' '))
+    const tileUrl = `${OBIS_TILE_TEMPLATE}?${params.toString()}`
+
+    removeObis()
+    map.addSource(OBIS_SOURCE_ID, {
+      type: 'vector',
+      tiles: [tileUrl],
+    })
+    const beforeId = map.getLayer('coastlines')
+      ? 'coastlines'
+      : map.getLayer(CELL_HOVER_LAYER_ID)
+        ? CELL_HOVER_LAYER_ID
+        : undefined
+    map.addLayer(
+      {
+        id: OBIS_LAYER_ID,
+        type: 'fill',
+        source: OBIS_SOURCE_ID,
+        'source-layer': 'grid',
+        paint: {
+          'fill-color': obisFillColor(COLOR_SCHEMES[colorSchemeRef.current].colors),
+          'fill-opacity': gridOpacityRef.current,
+          'fill-outline-color': 'rgba(255,255,255,0.35)',
+        },
+      },
+      beforeId,
+    )
+    map.addLayer(
+      {
+        id: OBIS_LABELS_LAYER_ID,
+        type: 'symbol',
+        source: OBIS_SOURCE_ID,
+        'source-layer': 'grid',
+        layout: {
+          'text-field': ['coalesce', ['to-string', ['get', OBIS_METRIC.property]], ''],
+          'text-size': 7,
+          'text-anchor': 'center',
+          'symbol-placement': 'point',
+          'text-allow-overlap': false,
+          visibility: showGridLabelsRef.current ? 'visible' : 'none',
+        },
+        paint: {
+          'text-color': '#0f172a',
+          'text-halo-color': 'rgba(255,255,255,0.9)',
+          'text-halo-width': 1,
+        },
+      },
+      map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined,
+    )
+  }, [mapLayer, selectedEovCategories, eovVocabulary, mapReady])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    if (mapLayer === 'data') {
+      if (map.getLayer(OBIS_LAYER_ID)) {
+        map.setPaintProperty(OBIS_LAYER_ID, 'fill-color', obisFillColor(COLOR_SCHEMES[colorScheme].colors))
+        map.setPaintProperty(OBIS_LAYER_ID, 'fill-opacity', gridOpacity)
+      }
+      if (map.getLayer(OBIS_LABELS_LAYER_ID)) {
+        map.setLayoutProperty(
+          OBIS_LABELS_LAYER_ID,
+          'visibility',
+          showGridLabels ? 'visible' : 'none',
+        )
+      }
+      return
+    }
     if (map.getLayer(PROJECT_GRID_LAYER_ID)) {
       map.setPaintProperty(
         PROJECT_GRID_LAYER_ID,
@@ -560,7 +720,7 @@ export function Map({
         showGridLabels ? 'visible' : 'none',
       )
     }
-  }, [gridMetric, colorScheme, gridOpacity, showGridLabels, mapReady])
+  }, [mapLayer, gridMetric, colorScheme, gridOpacity, showGridLabels, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -649,14 +809,14 @@ export function Map({
       <div className="map-eov-widget">
         <div className="map-filter-section">
           <span className="map-eov-widget-title">Map layer</span>
-          <div className="status-filter" role="group" aria-label="Grid metric">
-            {GRID_METRIC_OPTIONS.map(({ value, label }) => (
+          <div className="status-filter" role="group" aria-label="Map layer">
+            {MAP_LAYER_OPTIONS.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
-                className={`status-filter-btn${gridMetric === value ? ' is-active' : ''}`}
-                aria-pressed={gridMetric === value}
-                onClick={() => setGridMetric(value)}
+                className={`status-filter-btn${mapLayer === value ? ' is-active' : ''}`}
+                aria-pressed={mapLayer === value}
+                onClick={() => setMapLayer(value)}
               >
                 {label}
               </button>
@@ -665,7 +825,9 @@ export function Map({
         </div>
         {onEovCategoriesChange && eovVocabulary?.top_level_eovs?.length ? (
           <div className="map-filter-section">
-            <span className="map-eov-widget-title">EOV filter</span>
+            <span className="map-eov-widget-title">
+              {isDataLayer ? 'EOV (OBIS tags)' : 'EOV filter'}
+            </span>
             <div className="map-eov-toggles">
               {[...eovVocabulary.top_level_eovs]
                 .slice()
@@ -681,9 +843,12 @@ export function Map({
                 </label>
               ))}
             </div>
+            {isDataLayer && !selectedEovCategories.length ? (
+              <p className="map-data-hint">Select an EOV to show tagged OBIS occurrences.</p>
+            ) : null}
           </div>
         ) : null}
-        {onReadinessChange ? (
+        {!isDataLayer && onReadinessChange ? (
           READINESS_DIMENSIONS.map(({ key, label }) => (
             <div key={key} className="map-filter-section">
               <span className="map-eov-widget-title">{label}</span>
@@ -704,7 +869,7 @@ export function Map({
             </div>
           ))
         ) : null}
-        {onProgrammeStatusChange && (
+        {!isDataLayer && onProgrammeStatusChange && (
           <div className="map-filter-section">
             <span className="map-eov-widget-title">Status</span>
             <div className="status-filter" role="group" aria-label="Programme status">
@@ -764,12 +929,14 @@ export function Map({
               checked={showGridLabels}
               onChange={(e) => setShowGridLabels(e.target.checked)}
             />
-            <span>Show cell counts</span>
+            <span>{isDataLayer ? 'Show record counts' : 'Show cell counts'}</span>
           </label>
         </div>
       </div>
       <div className="map-legend">
-        <span className="map-legend-title">{GRID_METRICS[gridMetric].label}</span>
+        <span className="map-legend-title">
+          {isDataLayer ? OBIS_METRIC.label : GRID_METRICS[gridMetric].label}
+        </span>
         <div className="map-legend-scale">
           <div className="map-legend-bar">
             {COLOR_SCHEMES[colorScheme].colors.map((color) => (
@@ -777,9 +944,11 @@ export function Map({
             ))}
           </div>
           <div className="map-legend-labels">
-            {GRID_METRICS[gridMetric].legendLabels.map((label) => (
-              <span key={label}>{label}</span>
-            ))}
+            {(isDataLayer ? OBIS_METRIC.legendLabels : GRID_METRICS[gridMetric].legendLabels).map(
+              (label) => (
+                <span key={label}>{label}</span>
+              ),
+            )}
           </div>
         </div>
       </div>

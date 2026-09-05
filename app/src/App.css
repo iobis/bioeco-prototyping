@@ -738,6 +738,13 @@
   overflow-y: auto;
 }
 
+.map-data-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 .map-eov-toggle {
   display: flex;
   align-items: center;
