@@ -28,10 +28,12 @@ export const READINESS_DIMENSIONS: Array<{ key: ReadinessDimension; label: strin
 ]
 
 export function readinessSelectionKey(selection: ReadinessSelection): string {
-  return READINESS_DIMENSIONS.map(({ key }) => {
+  const parts = READINESS_DIMENSIONS.map(({ key }) => {
     const levels = selection[key]
     return levels.length ? [...levels].sort((a, b) => a - b).join(',') : ''
-  }).join('|')
+  })
+  if (parts.every((part) => !part)) return ''
+  return parts.join('|')
 }
 
 export function appendReadinessParams(params: URLSearchParams, selection: ReadinessSelection): void {
