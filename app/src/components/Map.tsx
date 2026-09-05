@@ -1,6 +1,6 @@
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import type { EovVocabulary } from '../eovVocabulary'
 import type { ProgrammeStatus } from '../programmeStatus'
 import { PROGRAMME_STATUS_OPTIONS } from '../programmeStatus'
@@ -27,12 +27,39 @@ const PROJECT_GRID_LAYER_ID = 'project-grid'
 /** Highest zoom with OBIS land/coastline vector tiles (https://tiles.obis.org). */
 const BASEMAP_MAX_ZOOM = 12
 
-/** Map land/ocean fill; grid cells are drawn over this at GRID_FILL_OPACITY. */
+/** Map land/ocean fill; grid cells are drawn over this. */
 const MAP_SURFACE = '#f8fafc'
-const GRID_FILL_OPACITY = 0.4
+const DEFAULT_GRID_OPACITY = 0.4
 
-/** Scientific Colour Maps Hawaii (sampled) for grid choropleths. */
-const GRID_COLORS = ['#8c0862', '#c2456e', '#e08a5b', '#c9c35a', '#6db37a', '#2a6b7a'] as const
+type ColorSchemeId = 'hawaii' | 'viridis' | 'inferno' | 'blues'
+
+/** Six-stop sequential ramps for grid choropleths (low → high). */
+const COLOR_SCHEMES: Record<
+  ColorSchemeId,
+  { label: string; colors: readonly [string, string, string, string, string, string] }
+> = {
+  hawaii: {
+    label: 'Hawaii',
+    colors: ['#8c0862', '#c2456e', '#e08a5b', '#c9c35a', '#6db37a', '#2a6b7a'],
+  },
+  viridis: {
+    label: 'Viridis',
+    colors: ['#440154', '#414487', '#2a788e', '#22a884', '#7ad151', '#fde725'],
+  },
+  inferno: {
+    label: 'Inferno',
+    colors: ['#000004', '#420a68', '#932667', '#dd513a', '#fca50a', '#fcffa4'],
+  },
+  blues: {
+    label: 'Blues',
+    colors: ['#eff3ff', '#c6dbef', '#9ecae1', '#6baed6', '#3182bd', '#08519c'],
+  },
+}
+
+const COLOR_SCHEME_OPTIONS = (Object.keys(COLOR_SCHEMES) as ColorSchemeId[]).map((id) => ({
+  id,
+  label: COLOR_SCHEMES[id].label,
+}))
 
 type GridMetric = 'programmes' | 'eovs'
 
@@ -69,22 +96,23 @@ function parseHex(hex: string): [number, number, number] {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
 }
 
-/** Blend a fill color over the map surface at the same opacity as grid cells. */
-function legendSwatchColor(hex: string): string {
+/** Blend a fill color over the map surface at the given opacity. */
+function legendSwatchColor(hex: string, opacity: number): string {
   const [r, g, b] = parseHex(hex)
   const [br, bg, bb] = parseHex(MAP_SURFACE)
-  const a = GRID_FILL_OPACITY
+  const a = opacity
   const mix = (c: number, base: number) => Math.round(c * a + base * (1 - a))
   return `rgb(${mix(r, br)}, ${mix(g, bg)}, ${mix(b, bb)})`
 }
 
-const GRID_LEGEND_COLORS = GRID_COLORS.map(legendSwatchColor)
-
-function gridFillColor(metric: GridMetric): maplibregl.ExpressionSpecification {
+function gridFillColor(
+  metric: GridMetric,
+  colors: readonly string[],
+): maplibregl.ExpressionSpecification {
   const { property, stops } = GRID_METRICS[metric]
   const stopsExpr: (string | number)[] = []
   for (let i = 0; i < stops.length; i++) {
-    stopsExpr.push(stops[i], GRID_COLORS[i])
+    stopsExpr.push(stops[i], colors[i])
   }
   return [
     'interpolate',
@@ -154,8 +182,17 @@ export function Map({
   const mapLoadedRef = useRef(false)
   const [mapReady, setMapReady] = useState(false)
   const [gridMetric, setGridMetric] = useState<GridMetric>('programmes')
+  const [colorScheme, setColorScheme] = useState<ColorSchemeId>('hawaii')
+  const [gridOpacity, setGridOpacity] = useState(DEFAULT_GRID_OPACITY)
+  const [showGridLabels, setShowGridLabels] = useState(true)
   const gridMetricRef = useRef<GridMetric>('programmes')
+  const colorSchemeRef = useRef<ColorSchemeId>('hawaii')
+  const gridOpacityRef = useRef(DEFAULT_GRID_OPACITY)
+  const showGridLabelsRef = useRef(true)
   gridMetricRef.current = gridMetric
+  colorSchemeRef.current = colorScheme
+  gridOpacityRef.current = gridOpacity
+  showGridLabelsRef.current = showGridLabels
   const lastAppliedSearchRef = useRef<string | undefined>(undefined)
   const readinessAnchorRef = useRef<Partial<Record<ReadinessDimension, number>>>({})
   const hoveredIdRef = useRef<string | null>(null)
@@ -214,8 +251,8 @@ export function Map({
           source: 'project-tiles',
           'source-layer': 'aggs',
           paint: {
-            'fill-color': gridFillColor('programmes'),
-            'fill-opacity': GRID_FILL_OPACITY,
+            'fill-color': gridFillColor('programmes', COLOR_SCHEMES.hawaii.colors),
+            'fill-opacity': DEFAULT_GRID_OPACITY,
             'fill-outline-color': 'rgba(255,255,255,0.35)',
           },
         },
@@ -241,6 +278,7 @@ export function Map({
             'text-anchor': 'center',
             'symbol-placement': 'point',
             'text-allow-overlap': false,
+            visibility: 'visible',
           },
           paint: {
             'text-color': '#0f172a',
@@ -471,8 +509,11 @@ export function Map({
         source: 'project-tiles',
         'source-layer': 'aggs',
         paint: {
-          'fill-color': gridFillColor(gridMetricRef.current),
-          'fill-opacity': GRID_FILL_OPACITY,
+          'fill-color': gridFillColor(
+            gridMetricRef.current,
+            COLOR_SCHEMES[colorSchemeRef.current].colors,
+          ),
+          'fill-opacity': gridOpacityRef.current,
           'fill-outline-color': 'rgba(255,255,255,0.35)',
         },
       },
@@ -490,6 +531,7 @@ export function Map({
           'text-anchor': 'center',
           'symbol-placement': 'point',
           'text-allow-overlap': false,
+          visibility: showGridLabelsRef.current ? 'visible' : 'none',
         },
         paint: {
           'text-color': '#0f172a',
@@ -503,12 +545,22 @@ export function Map({
     const map = mapRef.current
     if (!map || !mapReady) return
     if (map.getLayer(PROJECT_GRID_LAYER_ID)) {
-      map.setPaintProperty(PROJECT_GRID_LAYER_ID, 'fill-color', gridFillColor(gridMetric))
+      map.setPaintProperty(
+        PROJECT_GRID_LAYER_ID,
+        'fill-color',
+        gridFillColor(gridMetric, COLOR_SCHEMES[colorScheme].colors),
+      )
+      map.setPaintProperty(PROJECT_GRID_LAYER_ID, 'fill-opacity', gridOpacity)
     }
     if (map.getLayer('project-grid-labels')) {
       map.setLayoutProperty('project-grid-labels', 'text-field', gridLabelField(gridMetric))
+      map.setLayoutProperty(
+        'project-grid-labels',
+        'visibility',
+        showGridLabels ? 'visible' : 'none',
+      )
     }
-  }, [gridMetric, mapReady])
+  }, [gridMetric, colorScheme, gridOpacity, showGridLabels, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -670,13 +722,58 @@ export function Map({
             </div>
           </div>
         )}
+        <div className="map-filter-section">
+          <span className="map-eov-widget-title">Colour</span>
+          <select
+            className="map-style-select"
+            value={colorScheme}
+            aria-label="Grid colour scheme"
+            onChange={(e) => setColorScheme(e.target.value as ColorSchemeId)}
+          >
+            {COLOR_SCHEME_OPTIONS.map(({ id, label }) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="map-filter-section">
+          <span className="map-eov-widget-title">
+            Opacity <span className="map-opacity-value">{Math.round(gridOpacity * 100)}%</span>
+          </span>
+          <input
+            type="range"
+            className="map-opacity-slider"
+            min={0.1}
+            max={1}
+            step={0.05}
+            value={gridOpacity}
+            aria-label="Grid layer opacity"
+            style={
+              {
+                '--slider-progress': `${((gridOpacity - 0.1) / 0.9) * 100}%`,
+              } as CSSProperties
+            }
+            onChange={(e) => setGridOpacity(Number(e.target.value))}
+          />
+        </div>
+        <div className="map-filter-section">
+          <label className="map-eov-toggle">
+            <input
+              type="checkbox"
+              checked={showGridLabels}
+              onChange={(e) => setShowGridLabels(e.target.checked)}
+            />
+            <span>Show cell counts</span>
+          </label>
+        </div>
       </div>
       <div className="map-legend">
         <span className="map-legend-title">{GRID_METRICS[gridMetric].label}</span>
         <div className="map-legend-scale">
           <div className="map-legend-bar">
-            {GRID_LEGEND_COLORS.map((color) => (
-              <span key={color} style={{ background: color }} />
+            {COLOR_SCHEMES[colorScheme].colors.map((color) => (
+              <span key={color} style={{ background: legendSwatchColor(color, gridOpacity) }} />
             ))}
           </div>
           <div className="map-legend-labels">

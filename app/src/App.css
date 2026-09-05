@@ -625,13 +625,109 @@
 }
 
 .map-eov-widget-title {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   font-family: "Space Mono", monospace;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+.map-opacity-value {
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--text);
+}
+
+.map-opacity-slider {
+  --slider-track: #e2e8f0;
+  --slider-fill: #cbd5e1;
+  --slider-thumb: #64748b;
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.map-opacity-slider:focus {
+  outline: none;
+}
+
+.map-opacity-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.25);
+}
+
+.map-opacity-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.25);
+}
+
+.map-opacity-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--slider-fill) 0%,
+    var(--slider-fill) var(--slider-progress, 40%),
+    var(--slider-track) var(--slider-progress, 40%),
+    var(--slider-track) 100%
+  );
+}
+
+.map-opacity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.map-opacity-slider::-moz-range-track {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--slider-track);
+}
+
+.map-opacity-slider::-moz-range-progress {
+  height: 4px;
+  border: none;
+  border-radius: 999px;
+  background: var(--slider-fill);
+}
+
+.map-opacity-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--slider-thumb);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.map-style-select {
+  width: 100%;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .map-eov-toggles {
