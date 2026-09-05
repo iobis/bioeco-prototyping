@@ -7,7 +7,7 @@ from elasticsearch.exceptions import NotFoundError
 
 from config import GRID_INDEX
 from es_client import get_es_client
-from query_filters import normalize_status, status_filters
+from query_filters import normalize_status, parse_readiness_levels, readiness_filters, status_filters
 
 router = APIRouter()
 
@@ -19,6 +19,9 @@ def _build_mvt_query(
     start_year: Optional[int],
     end_year: Optional[int],
     status: Optional[str],
+    readiness_data: Optional[list[int]] = None,
+    readiness_requirements: Optional[list[int]] = None,
+    readiness_coordination: Optional[list[int]] = None,
 ) -> dict:
     filters = []
     if eov and eov.strip():
@@ -41,6 +44,13 @@ def _build_mvt_query(
             }
         })
     filters.extend(status_filters(status))
+    filters.extend(
+        readiness_filters(
+            data=readiness_data,
+            requirements=readiness_requirements,
+            coordination=readiness_coordination,
+        )
+    )
     if not filters:
         return {"match_all": {}}
     return {"bool": {"filter": filters}}
@@ -61,6 +71,18 @@ def get_projects_tile(
         "all",
         description="Programme activity: active, inactive, or all (relative to the current calendar year)",
     ),
+    readiness_data: Optional[str] = Query(
+        None,
+        description="GOOS readiness-data levels 1–9 (comma-separated)",
+    ),
+    readiness_requirements: Optional[str] = Query(
+        None,
+        description="GOOS readiness-requirements levels 1–9 (comma-separated)",
+    ),
+    readiness_coordination: Optional[str] = Query(
+        None,
+        description="GOOS readiness-coordination levels 1–9 (comma-separated)",
+    ),
     es: Elasticsearch = Depends(get_es_client),
 ):
     """Return a Mapbox Vector Tile from Elasticsearch's native _mvt API (project_grid)."""
@@ -76,11 +98,24 @@ def get_projects_tile(
 
     try:
         status_norm = normalize_status(status)
+        readiness_data_levels = parse_readiness_levels(readiness_data)
+        readiness_requirements_levels = parse_readiness_levels(readiness_requirements)
+        readiness_coordination_levels = parse_readiness_levels(readiness_coordination)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     body = {
-        "query": _build_mvt_query(eov, eov_category, name, start_year, end_year, status_norm),
+        "query": _build_mvt_query(
+            eov,
+            eov_category,
+            name,
+            start_year,
+            end_year,
+            status_norm,
+            readiness_data_levels,
+            readiness_requirements_levels,
+            readiness_coordination_levels,
+        ),
         "grid_agg": "geotile",
         "grid_precision": 5,
         "grid_type": "grid",

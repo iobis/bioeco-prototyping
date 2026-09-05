@@ -224,6 +224,17 @@
   font-weight: 600;
 }
 
+.readiness-level-filter {
+  flex-wrap: wrap;
+  user-select: none;
+}
+
+.readiness-level-filter .status-filter-btn {
+  flex: 0 0 auto;
+  min-width: 2rem;
+  padding: 4px 6px;
+}
+
 .panel-content {
   flex: 1;
   min-width: 0;

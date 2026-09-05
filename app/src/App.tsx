@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { EovVocabulary } from './eovVocabulary'
 import type { ProgrammeStatus } from './programmeStatus'
+import { EMPTY_READINESS_SELECTION, type ReadinessSelection } from './readiness'
 import { Map } from './components/Map'
 import { ProjectList } from './components/ProjectList'
 import { AboutOverlay } from './components/AboutOverlay'
@@ -20,6 +21,7 @@ export default function App() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [programmeStatus, setProgrammeStatus] = useState<ProgrammeStatus>('all')
   const [selectedEovCategories, setSelectedEovCategories] = useState<string[]>([])
+  const [selectedReadiness, setSelectedReadiness] = useState<ReadinessSelection>(EMPTY_READINESS_SELECTION)
   const [eovVocabulary, setEovVocabulary] = useState<EovVocabulary | null>(null)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [importReportOpen, setImportReportOpen] = useState(false)
@@ -71,6 +73,8 @@ export default function App() {
           eovVocabulary={eovVocabulary}
           programmeStatus={programmeStatus}
           onProgrammeStatusChange={setProgrammeStatus}
+          selectedReadiness={selectedReadiness}
+          onReadinessChange={setSelectedReadiness}
         />
         <aside className="panel">
           <div className="panel-content">
@@ -85,6 +89,7 @@ export default function App() {
               eovCategories={selectedEovCategories}
               eovVocabulary={eovVocabulary}
               programmeStatus={programmeStatus}
+              readiness={selectedReadiness}
             />
           </div>
         </aside>

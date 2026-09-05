@@ -1,8 +1,19 @@
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { EovVocabulary } from '../eovVocabulary'
 import type { ProgrammeStatus } from '../programmeStatus'
 import { PROGRAMME_STATUS_OPTIONS } from '../programmeStatus'
+import {
+  EMPTY_READINESS_SELECTION,
+  READINESS_DIMENSIONS,
+  READINESS_LEVEL_OPTIONS,
+  appendReadinessParams,
+  readinessSelectionKey,
+  selectReadinessLevelRange,
+  toggleReadinessLevel,
+  type ReadinessDimension,
+  type ReadinessSelection,
+} from '../readiness'
 
 const HIGHLIGHT_SOURCE_ID = 'project-highlight'
 const HIGHLIGHT_LAYER_ID = 'project-highlight-layer'
@@ -121,6 +132,8 @@ interface MapProps {
   eovVocabulary?: EovVocabulary | null
   programmeStatus?: ProgrammeStatus
   onProgrammeStatusChange?: (status: ProgrammeStatus) => void
+  selectedReadiness?: ReadinessSelection
+  onReadinessChange?: (selection: ReadinessSelection) => void
 }
 
 export function Map({
@@ -132,6 +145,8 @@ export function Map({
   eovVocabulary = null,
   programmeStatus = 'all',
   onProgrammeStatusChange,
+  selectedReadiness = EMPTY_READINESS_SELECTION,
+  onReadinessChange,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
@@ -141,6 +156,7 @@ export function Map({
   const gridMetricRef = useRef<GridMetric>('programmes')
   gridMetricRef.current = gridMetric
   const lastAppliedSearchRef = useRef<string | undefined>(undefined)
+  const readinessAnchorRef = useRef<Partial<Record<ReadinessDimension, number>>>({})
   const hoveredIdRef = useRef<string | null>(null)
   const selectedCellBboxRef = useRef<string | null>(null)
   hoveredIdRef.current = hoveredProjectId ?? null
@@ -412,10 +428,11 @@ export function Map({
     if (!map || !map.getStyle() || !mapLoadedRef.current) return
     const eovCat = selectedEovCategories.length ? selectedEovCategories.join(',') : ''
     const statusKey = programmeStatus === 'all' ? '' : programmeStatus
-    const tileKey = `${eovCat}|${statusKey}`
+    const readinessKey = readinessSelectionKey(selectedReadiness)
+    const tileKey = `${eovCat}|${statusKey}|${readinessKey}`
     if (lastAppliedSearchRef.current === tileKey) return
     // Avoid replacing the source on initial load when we have no filters – the style already has project-tiles.
-    if (!eovCat && !statusKey && lastAppliedSearchRef.current === undefined) {
+    if (!eovCat && !statusKey && !readinessKey && lastAppliedSearchRef.current === undefined) {
       lastAppliedSearchRef.current = tileKey
       return
     }
@@ -425,6 +442,7 @@ export function Map({
     const params = new URLSearchParams()
     if (eovCat) params.set('eov_category', eovCat)
     if (statusKey) params.set('status', statusKey)
+    appendReadinessParams(params, selectedReadiness)
     const queryString = params.toString()
     const tileUrl = `${origin}/api/tiles/projects/{z}/{x}/{y}.mvt${queryString ? `?${queryString}` : ''}`
 
@@ -477,7 +495,7 @@ export function Map({
       },
       map.getLayer(CELL_HOVER_LAYER_ID) ? CELL_HOVER_LAYER_ID : undefined
     )
-  }, [selectedEovCategories, programmeStatus, mapReady])
+  }, [selectedEovCategories, programmeStatus, selectedReadiness, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
@@ -556,6 +574,21 @@ export function Map({
     onEovCategoriesChange(next)
   }
 
+  const onToggleReadiness = (
+    dimension: ReadinessDimension,
+    level: number,
+    event: MouseEvent
+  ) => {
+    if (!onReadinessChange) return
+    if (event.shiftKey) {
+      const anchor = readinessAnchorRef.current[dimension] ?? level
+      onReadinessChange(selectReadinessLevelRange(selectedReadiness, dimension, anchor, level))
+    } else {
+      onReadinessChange(toggleReadinessLevel(selectedReadiness, dimension, level))
+      readinessAnchorRef.current[dimension] = level
+    }
+  }
+
   return (
     <div className="map-wrap" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} className="map-container" style={{ width: '100%', height: '100%' }} />
@@ -595,6 +628,27 @@ export function Map({
               ))}
             </div>
           </div>
+        ) : null}
+        {onReadinessChange ? (
+          READINESS_DIMENSIONS.map(({ key, label }) => (
+            <div key={key} className="map-filter-section">
+              <span className="map-eov-widget-title">{label}</span>
+              <div className="status-filter readiness-level-filter" role="group" aria-label={label}>
+                {READINESS_LEVEL_OPTIONS.map(({ value, shortLabel, label: fullLabel }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={`status-filter-btn${selectedReadiness[key].includes(value) ? ' is-active' : ''}`}
+                    aria-pressed={selectedReadiness[key].includes(value)}
+                    title={fullLabel}
+                    onClick={(e) => onToggleReadiness(key, value, e)}
+                  >
+                    {shortLabel}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
         ) : null}
         {onProgrammeStatusChange && (
           <div className="map-filter-section">

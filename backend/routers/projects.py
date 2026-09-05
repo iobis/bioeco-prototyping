@@ -6,7 +6,7 @@ from elasticsearch.exceptions import NotFoundError
 
 from config import GRID_INDEX, PROJECT_INDEX
 from es_client import get_es_client
-from query_filters import normalize_status, status_filters
+from query_filters import normalize_status, parse_readiness_levels, readiness_filters, status_filters
 
 router = APIRouter()
 
@@ -29,6 +29,9 @@ def _build_projects_query(
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
     status: Optional[str] = None,
+    readiness_data: Optional[list[int]] = None,
+    readiness_requirements: Optional[list[int]] = None,
+    readiness_coordination: Optional[list[int]] = None,
 ):
     must = []
     filters = []
@@ -57,6 +60,13 @@ def _build_projects_query(
         filters.append({"range": {"start_year": {"lte": end_year}}})
 
     filters.extend(status_filters(status))
+    filters.extend(
+        readiness_filters(
+            data=readiness_data,
+            requirements=readiness_requirements,
+            coordination=readiness_coordination,
+        )
+    )
 
     body = {"query": {"bool": {}}}
     if must:
@@ -79,6 +89,9 @@ def _build_grid_cell_query(
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
     status: Optional[str] = None,
+    readiness_data: Optional[list[int]] = None,
+    readiness_requirements: Optional[list[int]] = None,
+    readiness_coordination: Optional[list[int]] = None,
 ) -> dict:
     """Filters aligned with map tiles so cell counts match the programme list."""
     filters = [
@@ -111,6 +124,13 @@ def _build_grid_cell_query(
             }
         })
     filters.extend(status_filters(status))
+    filters.extend(
+        readiness_filters(
+            data=readiness_data,
+            requirements=readiness_requirements,
+            coordination=readiness_coordination,
+        )
+    )
     return {"bool": {"filter": filters}}
 
 
@@ -123,6 +143,9 @@ def _project_ids_for_cell(
     start_year: Optional[int] = None,
     end_year: Optional[int] = None,
     status: Optional[str] = None,
+    readiness_data: Optional[list[int]] = None,
+    readiness_requirements: Optional[list[int]] = None,
+    readiness_coordination: Optional[list[int]] = None,
 ) -> list[str]:
     min_lon, min_lat, max_lon, max_lat = _parse_bbox(bbox)
     body = {
@@ -138,6 +161,9 @@ def _project_ids_for_cell(
             start_year=start_year,
             end_year=end_year,
             status=status,
+            readiness_data=readiness_data,
+            readiness_requirements=readiness_requirements,
+            readiness_coordination=readiness_coordination,
         ),
         "aggs": {
             "ids": {
@@ -161,6 +187,18 @@ def list_projects(
         "all",
         description="Programme activity: active, inactive, or all (relative to the current calendar year)",
     ),
+    readiness_data: Optional[str] = Query(
+        None,
+        description="GOOS readiness-data levels 1–9 (comma-separated)",
+    ),
+    readiness_requirements: Optional[str] = Query(
+        None,
+        description="GOOS readiness-requirements levels 1–9 (comma-separated)",
+    ),
+    readiness_coordination: Optional[str] = Query(
+        None,
+        description="GOOS readiness-coordination levels 1–9 (comma-separated)",
+    ),
     bbox: Optional[str] = Query(None, description="Bounding box: min_lon,min_lat,max_lon,max_lat"),
     include_geometry: bool = Query(False, description="Include geometry in each project item"),
     from_: int = Query(0, alias="from", ge=0),
@@ -175,6 +213,9 @@ def list_projects(
     """
     try:
         status_norm = normalize_status(status)
+        readiness_data_levels = parse_readiness_levels(readiness_data)
+        readiness_requirements_levels = parse_readiness_levels(readiness_requirements)
+        readiness_coordination_levels = parse_readiness_levels(readiness_coordination)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -190,6 +231,9 @@ def list_projects(
                     start_year=start_year,
                     end_year=end_year,
                     status=status_norm,
+                    readiness_data=readiness_data_levels,
+                    readiness_requirements=readiness_requirements_levels,
+                    readiness_coordination=readiness_coordination_levels,
                 )
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"Invalid bbox: {e}") from e
@@ -204,6 +248,9 @@ def list_projects(
                 start_year=start_year,
                 end_year=end_year,
                 status=status_norm,
+                readiness_data=readiness_data_levels,
+                readiness_requirements=readiness_requirements_levels,
+                readiness_coordination=readiness_coordination_levels,
             )
 
         body = {
