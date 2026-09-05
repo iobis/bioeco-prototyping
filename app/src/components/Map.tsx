@@ -1,4 +1,5 @@
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { EovVocabulary } from '../eovVocabulary'
 import type { ProgrammeStatus } from '../programmeStatus'
@@ -256,7 +257,8 @@ export function Map({
       maxZoom: BASEMAP_MAX_ZOOM,
     })
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-left')
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left')
+    map.addControl(new maplibregl.GlobeControl(), 'top-left')
 
     const setupGridInteractions = () => {
       if (!map.getSource(CELL_HOVER_SOURCE_ID)) {

@@ -10,7 +10,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: bioeco-api
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
       - ELASTIC_USER=elastic

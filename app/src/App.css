@@ -712,9 +712,13 @@
   color: var(--muted);
 }
 
-/* Map controls – light theme */
+/* Map controls – light theme; clear the left programme panel (320px) */
 .map-wrap .map-container {
   background: var(--bg);
+}
+
+.map-wrap .maplibregl-ctrl-top-left {
+  left: 320px;
 }
 
 .map-wrap .maplibregl-ctrl-group {
