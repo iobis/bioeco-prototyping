@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from
 import type { EovVocabulary } from '../eovVocabulary'
 import type { ProgrammeStatus } from '../programmeStatus'
 import { PROGRAMME_STATUS_OPTIONS } from '../programmeStatus'
+import type { ColorSchemeId, MapLayerMode } from '../urlState'
 import {
   EMPTY_READINESS_SELECTION,
   READINESS_DIMENSIONS,
@@ -36,8 +37,6 @@ const BASEMAP_MAX_ZOOM = 12
 const MAP_SURFACE = '#f8fafc'
 const DEFAULT_GRID_OPACITY = 0.4
 
-type ColorSchemeId = 'hawaii' | 'viridis' | 'inferno' | 'blues'
-
 /** Six-stop sequential ramps for grid choropleths (low → high). */
 const COLOR_SCHEMES: Record<
   ColorSchemeId,
@@ -66,7 +65,6 @@ const COLOR_SCHEME_OPTIONS = (Object.keys(COLOR_SCHEMES) as ColorSchemeId[]).map
   label: COLOR_SCHEMES[id].label,
 }))
 
-type MapLayerMode = 'programmes' | 'eovs' | 'data'
 type GridMetric = 'programmes' | 'eovs'
 
 const GRID_METRICS: Record<
@@ -202,6 +200,16 @@ interface MapProps {
   onProgrammeStatusChange?: (status: ProgrammeStatus) => void
   selectedReadiness?: ReadinessSelection
   onReadinessChange?: (selection: ReadinessSelection) => void
+  mapLayer?: MapLayerMode
+  onMapLayerChange?: (layer: MapLayerMode) => void
+  colorScheme?: ColorSchemeId
+  onColorSchemeChange?: (scheme: ColorSchemeId) => void
+  gridOpacity?: number
+  onGridOpacityChange?: (opacity: number) => void
+  showGridLabels?: boolean
+  onShowGridLabelsChange?: (show: boolean) => void
+  globe?: boolean
+  onGlobeChange?: (globe: boolean) => void
 }
 
 export function Map({
@@ -215,19 +223,25 @@ export function Map({
   onProgrammeStatusChange,
   selectedReadiness = EMPTY_READINESS_SELECTION,
   onReadinessChange,
+  mapLayer = 'programmes',
+  onMapLayerChange,
+  colorScheme = 'hawaii',
+  onColorSchemeChange,
+  gridOpacity = DEFAULT_GRID_OPACITY,
+  onGridOpacityChange,
+  showGridLabels = true,
+  onShowGridLabelsChange,
+  globe = false,
+  onGlobeChange,
 }: MapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const mapLoadedRef = useRef(false)
   const [mapReady, setMapReady] = useState(false)
-  const [mapLayer, setMapLayer] = useState<MapLayerMode>('programmes')
-  const [colorScheme, setColorScheme] = useState<ColorSchemeId>('hawaii')
-  const [gridOpacity, setGridOpacity] = useState(DEFAULT_GRID_OPACITY)
-  const [showGridLabels, setShowGridLabels] = useState(true)
-  const mapLayerRef = useRef<MapLayerMode>('programmes')
-  const colorSchemeRef = useRef<ColorSchemeId>('hawaii')
-  const gridOpacityRef = useRef(DEFAULT_GRID_OPACITY)
-  const showGridLabelsRef = useRef(true)
+  const mapLayerRef = useRef<MapLayerMode>(mapLayer)
+  const colorSchemeRef = useRef<ColorSchemeId>(colorScheme)
+  const gridOpacityRef = useRef(gridOpacity)
+  const showGridLabelsRef = useRef(showGridLabels)
   mapLayerRef.current = mapLayer
   colorSchemeRef.current = colorScheme
   gridOpacityRef.current = gridOpacity
@@ -236,6 +250,10 @@ export function Map({
   const readinessAnchorRef = useRef<Partial<Record<ReadinessDimension, number>>>({})
   const hoveredIdRef = useRef<string | null>(null)
   const selectedCellBboxRef = useRef<string | null>(null)
+  const onGlobeChangeRef = useRef(onGlobeChange)
+  const globeRef = useRef(globe)
+  onGlobeChangeRef.current = onGlobeChange
+  globeRef.current = globe
   hoveredIdRef.current = hoveredProjectId ?? null
   selectedCellBboxRef.current = selectedCellBbox ?? null
   const isDataLayer = mapLayer === 'data'
@@ -339,6 +357,30 @@ export function Map({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left')
     map.addControl(new maplibregl.GlobeControl(), 'top-left')
 
+    // Sync URL from the control button only — projectiontransition also fires during
+    // programmatic restore and was flipping globe back to mercator.
+    const bindGlobeControl = () => {
+      const btn = map
+        .getContainer()
+        .querySelector<HTMLButtonElement>(
+          'button.maplibregl-ctrl-globe, button.maplibregl-ctrl-globe-enabled',
+        )
+      if (!btn || btn.dataset.globeBound === '1') return
+      btn.dataset.globeBound = '1'
+      btn.addEventListener('click', () => {
+        window.setTimeout(() => {
+          onGlobeChangeRef.current?.(map.getProjection()?.type === 'globe')
+        }, 0)
+      })
+    }
+    bindGlobeControl()
+
+    const applyProjection = (wantGlobe: boolean) => {
+      const isGlobe = map.getProjection()?.type === 'globe'
+      if (wantGlobe === isGlobe) return
+      map.setProjection({ type: wantGlobe ? 'globe' : 'mercator' })
+    }
+
     const setupGridInteractions = () => {
       if (!map.getSource(CELL_HOVER_SOURCE_ID)) {
         map.addSource(CELL_HOVER_SOURCE_ID, {
@@ -405,8 +447,13 @@ export function Map({
       setMapReady(true)
       setupGridInteractions()
     }
+    // setProjection requires a loaded style; restore URL globe here (not only on React effect).
+    map.once('style.load', () => {
+      if (globeRef.current) applyProjection(true)
+    })
     if (map.isStyleLoaded()) {
       onLoad()
+      if (globeRef.current) applyProjection(true)
     } else {
       map.once('load', onLoad)
     }
@@ -779,6 +826,14 @@ export function Map({
     return removeCellHighlight
   }, [selectedCellBbox])
 
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const isGlobe = map.getProjection()?.type === 'globe'
+    if (globe === isGlobe) return
+    map.setProjection({ type: globe ? 'globe' : 'mercator' })
+  }, [globe, mapReady])
+
   const toggleEov = (key: string) => {
     if (!onEovCategoriesChange) return
     const next = selectedEovCategories.includes(key)
@@ -815,7 +870,7 @@ export function Map({
                 type="button"
                 className={`status-filter-btn${mapLayer === value ? ' is-active' : ''}`}
                 aria-pressed={mapLayer === value}
-                onClick={() => setMapLayer(value)}
+                onClick={() => onMapLayerChange?.(value)}
               >
                 {label}
               </button>
@@ -892,7 +947,7 @@ export function Map({
             className="map-style-select"
             value={colorScheme}
             aria-label="Grid colour scheme"
-            onChange={(e) => setColorScheme(e.target.value as ColorSchemeId)}
+            onChange={(e) => onColorSchemeChange?.(e.target.value as ColorSchemeId)}
           >
             {COLOR_SCHEME_OPTIONS.map(({ id, label }) => (
               <option key={id} value={id}>
@@ -918,7 +973,7 @@ export function Map({
                 '--slider-progress': `${((gridOpacity - 0.1) / 0.9) * 100}%`,
               } as CSSProperties
             }
-            onChange={(e) => setGridOpacity(Number(e.target.value))}
+            onChange={(e) => onGridOpacityChange?.(Number(e.target.value))}
           />
         </div>
         <div className="map-filter-section">
@@ -926,7 +981,7 @@ export function Map({
             <input
               type="checkbox"
               checked={showGridLabels}
-              onChange={(e) => setShowGridLabels(e.target.checked)}
+              onChange={(e) => onShowGridLabelsChange?.(e.target.checked)}
             />
             <span>{isDataLayer ? 'Show record counts' : 'Show cell counts'}</span>
           </label>

@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react'
 import type { EovVocabulary } from './eovVocabulary'
-import type { ProgrammeStatus } from './programmeStatus'
-import { EMPTY_READINESS_SELECTION, type ReadinessSelection } from './readiness'
 import { Map } from './components/Map'
 import { ProjectList } from './components/ProjectList'
 import { AboutPage } from './components/AboutPage'
 import { DataQualityPage } from './components/DataQualityPage'
 import { ProjectDetailDialog } from './components/ProjectDetailDialog'
 import { ReadinessDashboard } from './components/ReadinessDashboard'
+import {
+  parseUrlState,
+  replaceUrlState,
+  type AppView,
+  type ColorSchemeId,
+  type MapLayerMode,
+  type PortalUrlState,
+} from './urlState'
 import './App.css'
 
 const SEARCH_DEBOUNCE_MS = 300
 const IOC_LOGO_SRC = `${import.meta.env.BASE_URL}ioc_logo.svg`
 const GOOS_LOGO_SRC = `${import.meta.env.BASE_URL}goos_logo.png`
-
-type AppView = 'map' | 'readiness' | 'data-quality' | 'about'
 
 const NAV_ITEMS: Array<{ id: AppView; label: string }> = [
   { id: 'map', label: 'Map' },
@@ -23,16 +27,55 @@ const NAV_ITEMS: Array<{ id: AppView; label: string }> = [
   { id: 'about', label: 'About' },
 ]
 
+function applyParsedState(
+  parsed: PortalUrlState,
+  setters: {
+    setView: (v: AppView) => void
+    setSelectedProjectId: (v: string | null) => void
+    setSelectedCellBbox: (v: string | null) => void
+    setSearchQuery: (v: string) => void
+    setDebouncedSearchQuery: (v: string) => void
+    setProgrammeStatus: (v: PortalUrlState['status']) => void
+    setSelectedEovCategories: (v: string[]) => void
+    setSelectedReadiness: (v: PortalUrlState['readiness']) => void
+    setMapLayer: (v: MapLayerMode) => void
+    setColorScheme: (v: ColorSchemeId) => void
+    setGridOpacity: (v: number) => void
+    setShowGridLabels: (v: boolean) => void
+    setGlobe: (v: boolean) => void
+  },
+) {
+  setters.setView(parsed.view)
+  setters.setSelectedProjectId(parsed.programme)
+  setters.setSelectedCellBbox(parsed.bbox)
+  setters.setSearchQuery(parsed.q)
+  setters.setDebouncedSearchQuery(parsed.q)
+  setters.setProgrammeStatus(parsed.status)
+  setters.setSelectedEovCategories(parsed.eov)
+  setters.setSelectedReadiness(parsed.readiness)
+  setters.setMapLayer(parsed.layer)
+  setters.setColorScheme(parsed.colour)
+  setters.setGridOpacity(parsed.opacity)
+  setters.setShowGridLabels(parsed.labels)
+  setters.setGlobe(parsed.globe)
+}
+
 export default function App() {
-  const [view, setView] = useState<AppView>('map')
+  const initial = parseUrlState()
+  const [view, setView] = useState<AppView>(initial.view)
   const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null)
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-  const [selectedCellBbox, setSelectedCellBbox] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
-  const [programmeStatus, setProgrammeStatus] = useState<ProgrammeStatus>('all')
-  const [selectedEovCategories, setSelectedEovCategories] = useState<string[]>([])
-  const [selectedReadiness, setSelectedReadiness] = useState<ReadinessSelection>(EMPTY_READINESS_SELECTION)
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(initial.programme)
+  const [selectedCellBbox, setSelectedCellBbox] = useState<string | null>(initial.bbox)
+  const [searchQuery, setSearchQuery] = useState(initial.q)
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(initial.q)
+  const [programmeStatus, setProgrammeStatus] = useState(initial.status)
+  const [selectedEovCategories, setSelectedEovCategories] = useState(initial.eov)
+  const [selectedReadiness, setSelectedReadiness] = useState(initial.readiness)
+  const [mapLayer, setMapLayer] = useState<MapLayerMode>(initial.layer)
+  const [colorScheme, setColorScheme] = useState<ColorSchemeId>(initial.colour)
+  const [gridOpacity, setGridOpacity] = useState(initial.opacity)
+  const [showGridLabels, setShowGridLabels] = useState(initial.labels)
+  const [globe, setGlobe] = useState(initial.globe)
   const [eovVocabulary, setEovVocabulary] = useState<EovVocabulary | null>(null)
 
   useEffect(() => {
@@ -45,6 +88,58 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.statusText))))
       .then(setEovVocabulary)
       .catch(() => setEovVocabulary(null))
+  }, [])
+
+  useEffect(() => {
+    replaceUrlState({
+      view,
+      programme: selectedProjectId,
+      bbox: selectedCellBbox,
+      q: debouncedSearchQuery,
+      status: programmeStatus,
+      eov: selectedEovCategories,
+      readiness: selectedReadiness,
+      layer: mapLayer,
+      colour: colorScheme,
+      opacity: gridOpacity,
+      labels: showGridLabels,
+      globe,
+    })
+  }, [
+    view,
+    selectedProjectId,
+    selectedCellBbox,
+    debouncedSearchQuery,
+    programmeStatus,
+    selectedEovCategories,
+    selectedReadiness,
+    mapLayer,
+    colorScheme,
+    gridOpacity,
+    showGridLabels,
+    globe,
+  ])
+
+  useEffect(() => {
+    const onPopState = () => {
+      applyParsedState(parseUrlState(), {
+        setView,
+        setSelectedProjectId,
+        setSelectedCellBbox,
+        setSearchQuery,
+        setDebouncedSearchQuery,
+        setProgrammeStatus,
+        setSelectedEovCategories,
+        setSelectedReadiness,
+        setMapLayer,
+        setColorScheme,
+        setGridOpacity,
+        setShowGridLabels,
+        setGlobe,
+      })
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
   }, [])
 
   return (
@@ -102,6 +197,16 @@ export default function App() {
             onProgrammeStatusChange={setProgrammeStatus}
             selectedReadiness={selectedReadiness}
             onReadinessChange={setSelectedReadiness}
+            mapLayer={mapLayer}
+            onMapLayerChange={setMapLayer}
+            colorScheme={colorScheme}
+            onColorSchemeChange={setColorScheme}
+            gridOpacity={gridOpacity}
+            onGridOpacityChange={setGridOpacity}
+            showGridLabels={showGridLabels}
+            onShowGridLabelsChange={setShowGridLabels}
+            globe={globe}
+            onGlobeChange={setGlobe}
           />
           <aside className="panel">
             <div className="panel-content">
