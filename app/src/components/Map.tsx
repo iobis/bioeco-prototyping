@@ -26,7 +26,7 @@ const PROJECT_GRID_LAYER_ID = 'project-grid'
 const OBIS_SOURCE_ID = 'obis-occurrence'
 const OBIS_LAYER_ID = 'obis-occurrence-fill'
 const OBIS_LABELS_LAYER_ID = 'obis-occurrence-labels'
-/** OBIS occurrence density tiles; filter with `q=` on GOOS EOV tag URLs for now. */
+/** OBIS occurrence density tiles; filter with `tags=` (comma-separated GOOS EOV URLs). */
 const OBIS_TILE_TEMPLATE = 'https://api.obis.org/occurrence/tile/{x}/{y}/{z}.mvt'
 
 /** Highest zoom with OBIS land/coastline vector tiles (https://tiles.obis.org). */
@@ -635,8 +635,7 @@ export function Map({
     }
 
     const params = new URLSearchParams()
-    // Text search on tags via search_blob until a dedicated tags= filter exists.
-    params.set('q', tags.join(' '))
+    params.set('tags', tags.join(','))
     const tileUrl = `${OBIS_TILE_TEMPLATE}?${params.toString()}`
 
     removeObis()
